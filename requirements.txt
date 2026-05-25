@@ -1,0 +1,6 @@
+httpx
+beautifulsoup4
+markdownify
+pandas
+lxml
+tabulate

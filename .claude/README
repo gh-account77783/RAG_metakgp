@@ -1,0 +1,121 @@
+# DevSoc 2026 Hackathon
+## Advanced LLM Reasoning & Verification Challenge
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Status: Active](https://img.shields.io/badge/Status-Active-success)](https://github.com/topics/hackathon)
+
+> **Mission:** Build "GraphMind"—an advanced conversational AI that uses **Graph of Thoughts (GoT)** and **Mixture of Experts (MoE)** to provide verified answers using **ONLY** data scraped from [MetaKGP](https://wiki.metakgp.org/).
+
+## Schedule & Timeline
+**Duration:** 5 Days (Monday - Friday)
+
+| Event | Date | Time | Details |
+| :--- | :--- | :--- | :--- |
+| **Kickoff** | **Mon, Jan 12** | 5:00 PM | Problem Release & Team Formation |
+| **Code Freeze** | **Fri, Jan 16** | **12:00 PM** | **Submission Deadline (Strict)** |
+
+## 1. The Problem: "Trust, but Verify"
+
+Large Language Models (LLMs) often hallucinate when dealing with niche, institutional knowledge. They generate plausible-sounding but factually incorrect information because they lack real-time access to specific local data.
+
+### The Challenge
+Your task is to build a chatbot that answers questions **strictly** using data you scrape from **MetaKGP / MetaWiki**.
+
+**Why this is hard:**
+1. **No Pre-made Dataset:** You must build the pipeline to scrape, clean, and index the data yourself.
+2. **Stale Data Risks:** LLMs have outdated internal knowledge about IIT Kharagpur; you must force them to use *your* scraped data.
+3. **Hallucination:** If the scraper misses a page, the LLM might make something up. Your verification system must prevent this.
+
+## 2. Technical Pillars
+
+### Team Constraint
+* **Team Size:** Strictly **4 Members** per team.
+
+### Core Requirements
+Your solution **must** integrate these three techniques:
+
+#### 1. Data Pipeline (Scraping & Indexing)
+* **Scraper:** You must write a script to crawl `wiki.metakgp.org` (and related MetaWiki pages).
+* **Ingestion:** Clean the HTML/Wikitext and chunk it for retrieval (RAG).
+* **Constraint:** **NO external datasets** allowed. If the answer isn't on MetaKGP, the bot should say "I don't know."
+
+#### 2. Graph of Thoughts (GoT)
+Model reasoning as a directed graph.
+* **Nodes:** Facts extracted from your scraped documents.
+* **Edges:** Logical connections between different wiki pages.
+* **Goal:** Connect disparate pieces of info (e.g., connect a *Society* page to a *Student* page).
+
+#### 3. Mixture of Experts (MoE) Verification
+Implement specific verifiers that check against your scraped data:
+1. **Source Matcher:** "Does the text in the retrieved chunk actually support this claim?"
+2. **Hallucination Hunter:** "Is the bot inventing details not present in the scraped context?"
+3. **Logic Expert:** "Does the conclusion follow from the premises?"
+
+## 3. Expected System Behavior
+
+### Example Query
+**User:** *"Who are the governors of the Technology Literary Society?"*
+
+**System Output:**
+* **Step 1 (Scrape/Retrieve):** System searches vector store for "Technology Literary Society governors".
+* **Step 2 (Reasoning Paths):**
+    * *Path A:* Claims "John Doe" (Based on 2018 data). -> **Context Expert:** Outdated.
+    * *Path B:* Claims "Jane Smith" (Based on hallucination). -> **Source Matcher:** Citation missing.
+    * *Path C:* Claims "Current Governors listed in 2025 section". -> **Source Matcher:** Verified.
+* **Step 3 (Final Answer):** "The current governors are... [List]. (Source: MetaKGP/TLS_Page)"
+
+## 4. 🤖 Technical Implementation
+
+### 1. Data Pipeline (Scraping)
+* **Tools Used:** (e.g., Scrapy, Beautiful Soup, Selenium)
+* **Strategy:** Briefly explain how you scraped `wiki.metakgp.org`. How did you handle cleaning and indexing?
+* **Indexing:** (e.g., ChromaDB, FAISS, Pinecone)
+
+### 2. Graph of Thoughts (GoT)
+* **Reasoning Model:** Explain how your nodes and edges are structured.
+* **Graph Logic:** How do you connect different MetaKGP pages? (e.g., connecting a "Society" page to a "Student" page).
+
+### 3. Mixture of Experts (MoE)
+* **Expert 1 (Source Matcher):** How do you verify the text exists in the scraped data?
+* **Expert 2 (Hallucination Hunter):** How do you detect fabricated info?
+* **Expert 3 (Logic Expert):** How do you ensure logical consistency?
+
+## 📊 Setup Instructions
+* **Prerequisites:** (e.g., Python 3.10, Neo4j)
+* **Environment Variables:** List required `.env` keys (do not share actual keys).
+* **How to Run Scraper:** `python scrape.py`
+* **How to Run Bot:** `streamlit run app.py`
+
+
+## 5. Rules & Constraints
+
+### Data Source Rules (Strict)
+1. **Allowed Source:** ONLY `wiki.metakgp.org` (and associated MetaWiki domains).
+2. **Forbidden:** Wikipedia, Google Search API, or pre-trained knowledge usage.
+3. **Scraping:** You must implement the scraping logic. Using a pre-downloaded dump is **not allowed**—your code must show how data is fetched.
+
+### Tech Stack
+* **Open Source Only:** (LangChain, Scrapy, BeautifulSoup, Selenium, etc.)
+* **API Limits:** Stay within provided free tier limits ($50/team).
+
+## 6. Evaluation Criteria
+
+| Criteria | Points | Description |
+| :--- | :--- | :--- |
+| **Data Pipeline** | **30** | Effectiveness of the scraper, cleaning, and indexing strategies. |
+| **Verification (MoE)** | **30** | Ability to detect and stop hallucinations using the experts. |
+| **MetaKGP Fidelity** | **20** | **CRITICAL:** Answers must be traceable back to specific MetaKGP URLs. |
+| **UX & Demo** | **20** | Working chatbot, citation links, and graph visualization. |
+
+## 7. How to Submit
+
+**Deadline:** Friday, Jan 16 @ 12:00 PM.
+
+1. **Fork** this repository.
+2. Create a folder: `submissions/YOUR_TEAM_NAME`.
+3. Include your **Scraper Code** and **Chatbot Code**.
+4. Add a `README.md` using the [Submission Template](./SUBMISSION_TEMPLATE.md).
+5. Open a **Pull Request (PR)** to the `main` branch.
+
+### Deliverables Checklist
+* [ ] Source Code (Scraper + Bot).
