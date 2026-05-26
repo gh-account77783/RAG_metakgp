@@ -17,7 +17,7 @@ OUTPUT_FILE = "Crawler/scraped_wiki.jsonl"
 VISITED_FILE = "Crawler/scraped_urls.txt"
 FAILED_FILE = "Crawler/failed_pages.txt"
 USER_AGENT = "GraphMindCrawler/1.0 (+https://wiki.metakgp.org/w/GraphMind)"
-REQUEST_DELAY = 0.5
+REQUEST_DELAY = 1.5
 
 def is_content_page(url):
     """Filter out non-content pages based on the plan."""
@@ -82,12 +82,31 @@ def clean_html(soup):
     if not content_div:
         return soup
 
+    # DOM Purge: Destroy the rows causing table gore and email masking
+    # We use a list because we'll be modifying the DOM during iteration
+    all_rows = content_div.find_all('tr')
+    for tr in all_rows:
+        if tr.parent is None:
+            continue
+
+        row_text = tr.get_text(strip=True).lower()
+        if 'previous year grade distribution' in row_text:
+            # Double Strike Strategy:
+            # 1. Identify the sibling (the actual bar chart)
+            next_tr = tr.find_next_sibling('tr')
+            # 2. Destroy the sibling FIRST to avoid orphaned DOM nodes
+            if next_tr:
+                next_tr.decompose()
+            # 3. Destroy the header row LAST
+            tr.decompose()
+        elif 'email' in row_text:
+            tr.decompose()
+
     # Remove script, style and redundant tags
     for element in content_div(["script", "style", "div", "span"], class_="mw-editsection"):
         element.decompose()
 
     # Remove wiki boilerplate: "Page last edited...", category lists, etc.
-    # Category lists usually have id="catlinks"
     catlinks = soup.find("div", id="catlinks")
     if catlinks:
         catlinks.decompose()
@@ -107,11 +126,17 @@ def process_tables(soup):
 
             df = dfs[0]
 
-            # Fix Flaw 3: Replace NaNs with empty strings to avoid 'nan' in output
+            # Replace NaNs with empty strings to avoid 'nan' in output
             df = df.fillna("")
 
-            # If the table is completely empty (all cells are empty strings), decompose it
-            if df.empty or (df.astype(str).replace(" ", "").eq("").all().all()):
+            # Aggressive Empty Table Detection:
+            # If the table has content but the data rows are effectively empty
+            # (e.g. just headers and then empty cells), decompose it.
+            # We check if any cell in the dataframe (excluding headers) has actual content.
+            is_empty = df.astype(str).apply(lambda s: s.str.strip()).eq("").all().all()
+
+            # If the DataFrame is empty OR all its values are effectively empty strings
+            if df.empty or is_empty:
                 table.decompose()
                 continue
 
@@ -159,8 +184,14 @@ def scrape_page(url):
 
         # Fix Flaw 2: Remove unresolved Wikitext macros like {{{grades}}} or {{{semester}}}
         markdown_content = re.sub(r'\{\{\{.*?\}\}\}', '', markdown_content)
-        # Cleanup any resulting excessive whitespace from macro removal
-        markdown_content = re.sub(r'\n\s*\n', '\n\n', markdown_content).strip()
+
+        # Fix Flaw 3: Regex Purge for Empty Headers at the bottom of the page
+        # This targets specific boilerplate headers that appear at the end of the content
+        boilerplate_pattern = r'(#+\s+(Concepts taught in class|Student Opinion|How to Crack the Paper|Classroom resources|Additional Resources|Time Table)\s*)+$'
+        markdown_content = re.sub(boilerplate_pattern, '', markdown_content, flags=re.IGNORECASE | re.MULTILINE)
+
+        # Cleanup excessive whitespace (3 or more newlines to 2)
+        markdown_content = re.sub(r'\n{3,}', '\n\n', markdown_content).strip()
 
         return {
             "url": url,
