@@ -2,6 +2,7 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from neo4j_utils import Neo4jUtils
 from llm_client import LLMClient
+from moe_verifier import MoEVerifier
 import networkx as nx
 
 class GoTReasoningEngine:
@@ -11,9 +12,10 @@ class GoTReasoningEngine:
         self.collection = self.chroma_client.get_or_create_collection(name="metakgp_wiki")
         self.embedding_model = SentenceTransformer('BAAI/bge-large-en-v1.5')
 
-        # Initialize Graph Utils and LLM
+        # Initialize Graph Utils, LLM, and Verifier
         self.neo4j = Neo4jUtils()
         self.llm = LLMClient()
+        self.verifier = MoEVerifier()
 
     def _get_seed_pages(self, query, k=3):
         """Retrieve the top-k relevant chunks from ChromaDB to find entry pages."""
@@ -84,12 +86,22 @@ class GoTReasoningEngine:
             # Check if answer is found
             if "ANSWER:" in decision and "NONE" not in decision.split("ANSWER:")[1].split("\n")[0]:
                 answer = decision.split("ANSWER:")[1].split("\n")[0].strip()
-                print("Answer found!")
-                return {
-                    "answer": answer,
-                    "path": list(thought_graph.nodes),
-                    "knowledge": knowledge_set
-                }
+                print("Answer found! Verifying with MoE...")
+
+                verification = self.verifier.orchestrate(answer, knowledge_set, knowledge_set)
+                if "ACCEPT" in verification["decision"].upper():
+                    print("Answer verified!")
+                    return {
+                        "answer": answer,
+                        "path": list(thought_graph.nodes),
+                        "knowledge": knowledge_set,
+                        "verification": verification
+                    }
+                else:
+                    print(f"Verification failed: {verification['decision']}")
+                    # If verification fails, we don't return. We continue the loop to see if more info helps.
+                    # We treat it as if the answer wasn't found.
+                    pass
 
             # Pick next lead
             next_lead_line = [line for line in decision.split("\n") if line.startswith("NEXT_LEAD:")][0]
@@ -128,10 +140,18 @@ class GoTReasoningEngine:
         final_prompt = f"Query: {query}\n\nKnowledge Set:\n{knowledge_set}\n\nProvide a final answer based strictly on the knowledge set. If the answer is not there, say 'I don't know'."
         answer = self.llm.generate(final_prompt)
 
+        print("Verifying final answer with MoE...")
+        verification = self.verifier.orchestrate(answer, knowledge_set, knowledge_set)
+
+        if "REJECT" in verification["decision"].upper():
+            print("Final answer rejected by MoE. Returning 'I don't know' to maintain fidelity.")
+            answer = "I don't know based on the provided knowledge set."
+
         return {
             "answer": answer,
             "path": list(thought_graph.nodes),
-            "knowledge": knowledge_set
+            "knowledge": knowledge_set,
+            "verification": verification
         }
 
     def close(self):
