@@ -21,11 +21,12 @@ def main():
         print(f"Input file {input_path} not found.")
         return
 
-    def create_graph(tx):
+    def setup_constraints(tx):
         # 1. Create Constraints for uniqueness
         tx.run("CREATE CONSTRAINT IF NOT EXISTS FOR (p:Page) REQUIRE p.url IS UNIQUE")
         tx.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE")
 
+    def create_graph(tx):
         print("Indexing data into Neo4j...")
         with open(input_path, 'r', encoding='utf-8') as f:
             for line in f:
@@ -64,6 +65,7 @@ def main():
 
     try:
         with driver.session() as session:
+            session.execute_write(setup_constraints)
             session.execute_write(create_graph)
         print("Successfully imported data into Neo4j.")
     except Exception as e:

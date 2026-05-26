@@ -29,7 +29,8 @@ def main():
     def apply_mitigation(tx):
         # 1. Get all entities/pages from the graph
         result = tx.run("MATCH (p:Page) RETURN p.title AS title, p.url AS url")
-        pages = [{"title": record["title"], "url": record["url"]} for record in result]
+        # Filter out pages with no title to avoid NoneType errors in embedding model
+        pages = [{"title": record["title"], "url": record["url"]} for record in result if record["title"]]
 
         if not pages:
             print("No pages found in Neo4j graph.")
