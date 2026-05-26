@@ -1,3 +1,6 @@
+.env
+
+
 Tackling a Developers' Society challenge of this magnitude requires a highly structured approach. A 5-day timeline with a strict 4-member limit means your team cannot afford to get bogged down in scope creep. You need a modular architecture where each team member can own a distinct part of the pipeline.
 
 Your familiarity with PyTorch, advanced Transformer architectures, and complex data structures will be a massive asset here, especially when designing the Mixture of Experts (MoE) routing and the Graph of Thoughts (GoT) topology.

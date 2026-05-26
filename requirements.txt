@@ -4,3 +4,10 @@ markdownify
 pandas
 lxml
 tabulate
+openai
+ollama
+sentence-transformers
+chromadb
+neo4j
+networkx
+python-dotenv
