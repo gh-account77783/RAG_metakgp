@@ -57,3 +57,12 @@ This document outlines the implementation strategy for the "GraphMind" conversat
 - [ ] **Gold Dataset Creation:** Manually curate a set of complex questions and verified answers from MetaKGP.
 - [ ] **Fidelity Testing:** Measure the rate of hallucinations and "I don't know" correctness.
 - [ ] **Performance Tuning:** Optimize retrieval speed and reasoning latency.
+
+
+
+## Establishment of MCP Server.
+We sould be able to connect MCP eg in VS Code for the user and it can talk to this RAG agent and info headlesss and also save his/he details which will be used after authorization. User logs in his account which hase all this details. Use MCP to connect to remote server of his RAG agent which is deployed somewhere else. It gives flexibility to connect from anywhere to this agent. This project will include security, authentificationa and authorization. (Eg. Use google signin feature).
+
+Can expand to IIT KGP official site.
+
+MCP added to any mobile app / web application/ company website directly and then could interatct with RAG server instaed of developing service around RAG. It will be like Pendrive of sorts could be plugged anywhere and can interact with our RAG agent after login done.

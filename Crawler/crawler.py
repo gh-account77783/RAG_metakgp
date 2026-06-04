@@ -48,7 +48,7 @@ def get_all_pages():
     print("Discovering pages via Special:AllPages...")
     while current_url:
         try:
-            response = httpx.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=10)
+            response = httpx.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=40)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'lxml')
 
@@ -162,7 +162,7 @@ def extract_links(soup):
 def scrape_page(url):
     """Fetch, clean, and transform a single page."""
     try:
-        response = httpx.get(url, headers={"User-Agent": USER_AGENT}, timeout=10)
+        response = httpx.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'lxml')
 
