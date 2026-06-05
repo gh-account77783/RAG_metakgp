@@ -1,7 +1,11 @@
 import streamlit as st
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 from got_engine import GoTReasoningEngine
 import networkx as nx
-from streamlit_agraph import agraph, Node, Edge
+from streamlit_agraph import agraph, Node, Edge, Config
 
 # Page configuration
 st.set_page_config(
@@ -111,11 +115,16 @@ if prompt := st.chat_input("Ask something about MetaKGP..."):
                             edges.append(Edge(source=path[i-1], target=url, label="EXPLORED"))
 
                     # Display the graph
+                    config = Config(
+                        width=800,
+                        height=300,
+                        directed=True,
+                        physics=True
+                    )
                     agraph(
                         nodes=nodes,
                         edges=edges,
-                        device="mobile",
-                        height=300
+                        config=config
                     )
 
                 # Store in history

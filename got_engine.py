@@ -94,7 +94,8 @@ class AgentState(TypedDict):
 def seed_retrieval(state: AgentState, config: RunnableConfig) -> Dict:
     configurable = config.get("configurable") or {}
     db = configurable.get("vector_store")
-    if not db:
+    graph = configurable.get("neo4j_graph")
+    if db is None:
         raise ValueError("vector_store client not configured in RunnableConfig.")
         
     try:
@@ -103,16 +104,39 @@ def seed_retrieval(state: AgentState, config: RunnableConfig) -> Dict:
         results = []
         
     candidates = []
+    knowledge_set = ""
+    visited = set()
+    thought_path = []
+    
     for doc in results:
         url = doc.metadata.get("url")
         title = doc.metadata.get("title")
-        candidates.append(f"{title} ({url})")
+        content = doc.page_content[:15000] if doc.page_content else ""
         
+        if url and url not in visited:
+            visited.add(url)
+            thought_path.append(url)
+            knowledge_set += f"\n--- Page: {title} ({url}) ---\n{content}\n"
+            
+            if graph is not None:
+                try:
+                    neighbors_res = graph.query(
+                        "MATCH (p:Page {url: $url})-[:LINKS_TO|SEMANTICALLY_RELATED]->(n:Page) RETURN n.url AS url, n.title AS title LIMIT 10",
+                        {"url": url}
+                    )
+                    for n in neighbors_res:
+                        cand_str = f"{n['title']} ({n['url']})"
+                        if cand_str not in candidates and n['url'] not in visited:
+                            candidates.append(cand_str)
+                except Exception:
+                    pass
+                    
     return {
         "candidates": candidates,
         "iterations": 0,
-        "visited_pages": set(),
-        "thought_path": []
+        "visited_pages": visited,
+        "thought_path": thought_path,
+        "knowledge_set": knowledge_set
     }
 
 def reason_and_decide(state: AgentState) -> Dict:
@@ -163,13 +187,25 @@ def reason_and_decide(state: AgentState) -> Dict:
         "iterations": state["iterations"] + 1
     }
 
+def clean_lead_url(lead: str) -> str:
+    import re
+    if not lead or lead == 'NONE':
+        return 'NONE'
+    match = re.search(r'\((https?://[^\)]+)\)', lead)
+    if match:
+        return match.group(1)
+    match_any = re.search(r'https?://[^\s\)]+', lead)
+    if match_any:
+        return match_any.group(0)
+    return lead.strip()
+
 def explore_lead(state: AgentState, config: RunnableConfig) -> Dict:
     configurable = config.get("configurable") or {}
     graph = configurable.get("neo4j_graph")
-    if not graph:
+    if graph is None:
         raise ValueError("neo4j_graph client not configured in RunnableConfig.")
         
-    next_url = state["decision"].next_lead
+    next_url = clean_lead_url(state["decision"].next_lead)
     
     try:
         res = graph.query("MATCH (p:Page {url: $url}) RETURN p.title AS title, p.content AS content", {"url": next_url})
@@ -379,12 +415,13 @@ def fallback_synthesize(state: AgentState) -> Dict:
 def route_after_decision(state: AgentState):
     decision = state["decision"]
     next_lead = decision.next_lead
+    next_url = clean_lead_url(next_lead)
     
-    if state["iterations"] >= 5:
+    if state["iterations"] >= 7:
         return "fallback_synthesize"
     if not state["candidates"] and next_lead == "NONE" and decision.answer == "NONE":
         return "fallback_synthesize"
-    if next_lead in state["visited_pages"]:
+    if next_url in state["visited_pages"]:
         return "fallback_synthesize"
         
     if decision.answer != "NONE":
@@ -439,6 +476,10 @@ def compile_workflow():
 # --- Main Engine Wrapper Class (API Compatible) ---
 class GoTReasoningEngine:
     def __init__(self, vector_store_path='VectorStore'):
+        if not os.path.isabs(vector_store_path):
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            vector_store_path = os.path.join(base_dir, vector_store_path)
+            
         device = "cpu"
         try:
             import torch
@@ -465,7 +506,7 @@ class GoTReasoningEngine:
         # 4. Compile the LangGraph app workflow
         self.app = compile_workflow()
 
-    def reason(self, query: str, max_iterations=5) -> Dict[str, Any]:
+    def reason(self, query: str, max_iterations=7) -> Dict[str, Any]:
         inputs = {
             "query": query,
             "knowledge_set": "",
