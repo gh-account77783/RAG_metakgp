@@ -48,7 +48,7 @@ def get_all_pages():
     print("Discovering pages via Special:AllPages...")
     while current_url:
         try:
-            response = httpx.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=40)
+            response = httpx.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=200)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'lxml')
 
