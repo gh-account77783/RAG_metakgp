@@ -3,6 +3,9 @@ import os
 from rapidfuzz import process, fuzz
 from sentence_transformers import SentenceTransformer, util
 from neo4j import GraphDatabase
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def main():
     # Neo4j Connection Details

@@ -1,0 +1,68 @@
+# GraphMind Project Workflow Plan (Post-Crawler)
+
+This document outlines the implementation strategy for the "GraphMind" conversational AI after the data scraping phase is complete.
+
+## Phase 1: Data Ingestion & Knowledge Base Setup
+**Goal:** Transform raw scraped data into a searchable and linked knowledge base.
+- [x] **Data Cleaning & Semantic Refining:**
+    - *Noise Removal:* Strip "page does not exist" labels and redundant markdown artifacts (e.g., `Unnamed: 6`).
+    - *Table Processing:* Convert Markdown tables into structured natural language sentences or direct triplets for the Knowledge Graph.
+    - *Link Normalization:* Standardize all internal wiki links to a consistent format for easier entity linking.
+- [x] **Chunking Strategy:** Develop a semantic chunking mechanism to preserve context (e.g., splitting by section or fixed-size with overlap).
+- [x] **Embedding Generation:** Select and integrate an embedding model (e.g., `BAAI/bge-large-en-v1.5`).
+- [x] **Vector Store Implementation:** Set up a vector database (e.g., ChromaDB) to store and retrieve document chunks.
+- [x] **Neo4j Database Setup:** Initialize Neo4j instance and define schema for entities (Nodes) and relationships (Edges).
+- [x] **Sparse Graph Mitigation:**
+    - **Entity Linking (Hybrid Pipeline):**
+        - *Candidate Generation:* Use RapidFuzz for string matching and SBERT (bi-encoders) for semantic candidate retrieval.
+        - *Disambiguation:* Use Cross-Encoders to rank candidates and resolve mentions to the correct entity.
+    - **Semantic Similarity:** Create "soft edges" between nodes that are semantically similar even without direct wiki links, using embedding cosine similarity.
+
+## Phase 2: Graph of Thoughts (GoT) Implementation
+**Goal:** Move beyond simple RAG by modeling information as a reasoning graph.
+- [x] **Knowledge Graph Extraction:**
+    - Extract entities (Societies, Students, Events) and relationships from the cleaned text.
+    - Map internal wiki links as edges between nodes.
+- [x] **Graph Construction:** Implement the graph using `NetworkX` for reasoning and coordinate with the Neo4j backend.
+- [x] **Reasoning Engine:**
+    - Implement GoT traversal: instead of one retrieval, the system should explore "paths" of thought.
+    - Example: If searching for a person, find their society $\rightarrow$ find society governors $\rightarrow$ verify current year.
+
+## Phase 3: Mixture of Experts (MoE) Verification
+**Goal:** Ensure 100% fidelity to the scraped data and eliminate hallucinations.
+- [ ] **Implement Expert Verifiers (`moe_verifier.py`):**
+    - **Expert 1: Source Matcher:** Create a prompt-based verifier that checks if the generated claim is explicitly supported by the retrieved text chunks.
+    - **Expert 2: Hallucination Hunter:** Create a mechanism to identify any specific information in the answer that is NOT present in the provided context.
+    - **Expert 3: Logic Expert:** Implement a check to ensure the final conclusion follows logically from the premises extracted during GoT.
+- [ ] **Verification Orchestrator:** 
+    - Develop a "Judge" logic that aggregates expert scores.
+    - Implement a threshold for "Verified" vs "Unverified" answers.
+- [ ] **GoT Integration:** 
+    - Integrate the MoE layer into the `GoTReasoningEngine.reason` loop.
+    - Add a "Verification Step" after final synthesis but before returning the result.
+    - Implement a feedback loop: if verification fails, the engine should attempt to re-explore the graph or return an "I don't know" response.
+- [ ] **MoE Unit Testing:** Create a test suite with "Truth" and "Hallucination" pairs to calibrate the experts.
+
+## Phase 4: Chatbot Integration & UI
+**Goal:** Provide a user-facing interface that demonstrates the reasoning process.
+- [ ] **Strict Context Prompting:** Engineer system prompts that forbid the use of pre-trained knowledge (forcing "I don't know" responses).
+- [ ] **Integration Pipeline:** Connect the flow: `User Query` $\rightarrow$ `RAG Retrieval` $\rightarrow$ `GoT Expansion` $\rightarrow$ `MoE Verification` $\rightarrow$ `Final Answer`.
+- [ ] **Frontend Development:** Build a Streamlit app featuring:
+    - Chat interface.
+    - Source citations with direct links to MetaKGP.
+    - Visual representation of the Graph of Thoughts used for the query.
+
+## Phase 5: Evaluation & Refinement
+**Goal:** Stress-test the system against the "Trust, but Verify" requirements.
+- [ ] **Gold Dataset Creation:** Manually curate a set of complex questions and verified answers from MetaKGP.
+- [ ] **Fidelity Testing:** Measure the rate of hallucinations and "I don't know" correctness.
+- [ ] **Performance Tuning:** Optimize retrieval speed and reasoning latency.
+
+
+
+## Establishment of MCP Server.
+We sould be able to connect MCP eg in VS Code for the user and it can talk to this RAG agent and info headlesss and also save his/he details which will be used after authorization. User logs in his account which hase all this details. Use MCP to connect to remote server of his RAG agent which is deployed somewhere else. It gives flexibility to connect from anywhere to this agent. This project will include security, authentificationa and authorization. (Eg. Use google signin feature).
+
+Can expand to IIT KGP official site.
+
+MCP added to any mobile app / web application/ company website directly and then could interatct with RAG server instaed of developing service around RAG. It will be like Pendrive of sorts could be plugged anywhere and can interact with our RAG agent after login done.

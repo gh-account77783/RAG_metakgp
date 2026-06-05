@@ -12,3 +12,7 @@ networkx
 python-dotenv
 streamlit
 streamlit-agraph
+langchain
+langchain-community
+langchain-huggingface
+langgraph
