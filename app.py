@@ -3,7 +3,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-from got_engine import GoTReasoningEngine
+from RAG.got_engine import GoTReasoningEngine
 import networkx as nx
 from streamlit_agraph import agraph, Node, Edge, Config
 

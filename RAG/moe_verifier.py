@@ -1,5 +1,5 @@
 import os
-from llm_client import LLMClient
+from RAG.llm_client import LLMClient
 
 class MoEVerifier:
     def __init__(self):

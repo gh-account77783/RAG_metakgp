@@ -3,6 +3,7 @@ import json
 import time
 from sentence_transformers import SentenceTransformer
 import chromadb
+import torch
 
 def semantic_chunking(text, chunk_size=512, overlap=50):
     chunks = []
@@ -22,9 +23,10 @@ def main():
         print(f"Input file {input_path} not found.")
         return
 
-    # Initialize Embedding Model on GPU
-    print("Loading embedding model: BAAI/bge-large-en-v1.5 on RTX 4050 GPU...")
-    model = SentenceTransformer('BAAI/bge-large-en-v1.5', device='cuda')
+    # Initialize Embedding Model with GPU/CPU auto-detection
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Loading embedding model: BAAI/bge-large-en-v1.5 on {device.upper()}...")
+    model = SentenceTransformer('BAAI/bge-large-en-v1.5', device=device)
 
     # Initialize ChromaDB
     print("Initializing ChromaDB...")

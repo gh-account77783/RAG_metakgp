@@ -16,3 +16,7 @@ langchain
 langchain-community
 langchain-huggingface
 langgraph
+mcp
+fastapi
+uvicorn
+python-jose[cryptography]

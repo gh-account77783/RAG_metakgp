@@ -72,3 +72,16 @@ Once the semantic graph is built, we can transition to a **Hybrid Graph RAG** qu
 1. **Step 1**: The LLM translates a natural language question (e.g., *"Who governs the TLS?"*) into a Cypher query.
 2. **Step 2**: Neo4j executes the path traversal in memory (**without LLM calls**), returning the exact names in milliseconds.
 3. **Step 3**: The LLM receives the database output and formats the final sentence for the user.
+
+---
+
+## 5. Remote Administrative Data Ingestion Portal
+
+For future iterations, we can implement a secure, remote administrative portal to upload and process updated datasets without needing direct server shell access.
+
+### Proposed Architecture:
+* **Admin Web UI / REST Endpoint**: Add a password-protected route `/admin/ingest` on the FastAPI server that accepts multipart file uploads.
+* **Authentication**: Integrate API token headers (`X-Admin-Token`) or Google Admin Group authorization.
+* **Asynchronous Execution**: The file is stored in a temporary directory on the server, and a background task runs the ingestion incrementally without blocking incoming client requests.
+* **Security Concerns**: Requires strict file size limit validation (e.g., maximum 50MB), strict parsing validation to prevent injection attacks, and rate limiting to prevent Denial of Service (DoS) attacks.
+

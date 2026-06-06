@@ -15,10 +15,11 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.graphs import Neo4jGraph
 from langgraph.graph import StateGraph, END
 
-from llm_client import LLMClient
+from RAG.llm_client import LLMClient
 
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "neo4j"))
+# Resolve the path to the root neo4j folder correctly from the RAG subdirectory
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "neo4j"))
 from neo4j_utils import Neo4jUtils
 
 load_dotenv()
@@ -477,8 +478,9 @@ def compile_workflow():
 class GoTReasoningEngine:
     def __init__(self, vector_store_path='VectorStore'):
         if not os.path.isabs(vector_store_path):
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            vector_store_path = os.path.join(base_dir, vector_store_path)
+            # Resolve relative to the root directory (parent of RAG)
+            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            vector_store_path = os.path.join(root_dir, vector_store_path)
             
         device = "cpu"
         try:

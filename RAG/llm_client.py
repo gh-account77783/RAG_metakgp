@@ -16,24 +16,36 @@ class LLMClient:
             print("Warning: OLLAMA_API_KEY not found in environment variables.")
 
     def _request(self, endpoint, payload):
-        """Helper to send requests to Ollama Cloud, trying fallback base URLs."""
+        """Helper to send requests to Ollama Cloud, trying fallback base URLs with backoff retries."""
+        import time
+        max_retries = 3
+        backoff_factor = 2.0
+        
         for base_url in self.base_urls:
             url = f"{base_url}{endpoint}"
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             }
-            try:
-                with httpx.Client() as client:
-                    response = client.post(url, headers=headers, json=payload, timeout=60.0)
-                    if response.status_code == 200:
-                        self.current_base_url = base_url
-                        return response.json()
-                    else:
-                        print(f"Tried {url}: returned {response.status_code}")
-            except Exception as e:
-                print(f"Error connecting to {url}: {e}")
-
+            for attempt in range(max_retries):
+                try:
+                    with httpx.Client() as client:
+                        response = client.post(url, headers=headers, json=payload, timeout=60.0)
+                        if response.status_code == 200:
+                            self.current_base_url = base_url
+                            return response.json()
+                        elif response.status_code in (429, 502, 503, 504):
+                            print(f"Warning: {url} returned status {response.status_code}. Retrying (attempt {attempt + 1}/{max_retries})...")
+                        else:
+                            print(f"Tried {url}: returned {response.status_code}")
+                            break  # Do not retry client errors
+                except Exception as e:
+                    print(f"Error connecting to {url} (attempt {attempt + 1}/{max_retries}): {e}")
+                
+                if attempt < max_retries - 1:
+                    sleep_time = backoff_factor ** attempt
+                    time.sleep(sleep_time)
+        
         raise Exception(f"Failed to get a successful response from all base URLs for {endpoint}")
 
     def list_models(self):
