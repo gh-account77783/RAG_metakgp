@@ -11,6 +11,7 @@ import asyncio
 from typing import Dict, Any
 from fastapi import FastAPI, Depends, Header, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from mcp.server.fastmcp import FastMCP
 from jose import jwt, JWTError
 from RAG.got_engine import GoTReasoningEngine
@@ -49,7 +50,8 @@ async def get_page_info(url: str) -> dict:
     try:
         engine = get_engine()
         # Run synchronous Neo4j lookup in a worker thread to keep the FastAPI loop unblocked
-        return await asyncio.to_thread(engine.neo4j.get_page_info, url)
+        result = await asyncio.to_thread(engine.neo4j.get_page_info, url)
+        return result if result is not None else {"error": "Page not found"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -63,10 +65,17 @@ class TokenValidator:
     async def _get_google_keys(self) -> dict:
         # Fetch Google public certificates with a 24h cache window
         if not self.cached_keys or (time.time() - self.keys_fetched_at > 86400):
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get("https://www.googleapis.com/oauth2/v3/certs")
-                self.cached_keys = response.json()
-                self.keys_fetched_at = time.time()
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get("https://www.googleapis.com/oauth2/v3/certs")
+                    self.cached_keys = response.json()
+                    self.keys_fetched_at = time.time()
+            except Exception as e:
+                # If we have cached keys, reuse them on failure instead of failing the request
+                if self.cached_keys:
+                    pass
+                else:
+                    raise HTTPException(status_code=502, detail=f"Failed to fetch signing keys from Google: {str(e)}")
         return self.cached_keys
 
     async def verify_token(self, token: str) -> dict:
@@ -77,8 +86,12 @@ class TokenValidator:
             
         # 2. Standard Google OIDC verification
         try:
-            header = jwt.get_unverified_header(token)
-            kid = header.get("kid")
+            try:
+                header = jwt.get_unverified_header(token)
+                kid = header.get("kid")
+            except Exception as e:
+                raise JWTError(f"Invalid token format or header: {str(e)}")
+
             google_certs = await self._get_google_keys()
             keys = google_certs.get("keys", [])
             key = next((k for k in keys if k["kid"] == kid), None)
@@ -124,10 +137,24 @@ class MCPAuthMiddleware:
                         auth_header = val.decode("utf-8")
                         break
                 
+                token = None
+                if auth_header and auth_header.lower().startswith("bearer "):
+                    parts = auth_header.split(maxsplit=1)
+                    if len(parts) == 2:
+                        token = parts[1]
+                
+                # Fallback to query parameter token extraction (for browser-based EventSource)
+                if not token:
+                    import urllib.parse
+                    query_string = scope.get("query_string", b"").decode("utf-8")
+                    params = urllib.parse.parse_qs(query_string)
+                    token_list = params.get("token")
+                    if token_list:
+                        token = token_list[0]
+                
                 is_authorized = False
                 error_message = "Missing or invalid Authorization header."
-                if auth_header and auth_header.startswith("Bearer "):
-                    token = auth_header.split(" ")[1]
+                if token:
                     if self.static_key and token == self.static_key:
                         is_authorized = True
                     else:
@@ -161,6 +188,15 @@ class MCPAuthMiddleware:
 app = FastAPI(title="GraphMind Server Host")
 validator = TokenValidator(client_id=os.getenv("GOOGLE_CLIENT_ID", ""))
 
+# Add CORS Middleware to support web/browser-based MCP clients
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.add_middleware(
     MCPAuthMiddleware,
     validator=validator,
@@ -187,7 +223,12 @@ async def login():
     return RedirectResponse(google_url)
 
 @app.get("/callback")
-async def oauth_callback(code: str):
+async def oauth_callback(code: str = None, error: str = None):
+    if error:
+        raise HTTPException(status_code=400, detail=f"Google OAuth error: {error}")
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code.")
+        
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     redirect_uri = os.getenv("GOOGLE_REDIRECT_URI")

@@ -22,7 +22,7 @@ class Neo4jUtils:
                 url=url
             )
             record = result.single()
-            return record if record else None
+            return record.data() if record else None
 
     def get_neighbors(self, url):
         """Fetch all pages linked to or semantically related to the given page."""
