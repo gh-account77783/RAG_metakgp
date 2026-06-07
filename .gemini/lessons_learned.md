@@ -145,15 +145,18 @@ This section documents the security verification, bug fixes, FastMCP mount path 
 
 # 🧠 Session History, Lessons Learned, & Tips (8th June 2026)
 
-This section documents the debugging, Nginx reverse-proxy configuration adjustments, python-jose OIDC validation fixes, and routing resolution implemented during the local and remote deployment of the **GraphMind MCP Server**.
+This section documents the debugging, Nginx reverse-proxy configuration adjustments, python-jose OIDC validation fixes, routing resolution, and Neo4j database restoration steps implemented during the local and remote deployment of the **GraphMind MCP Server**.
 
 ## 📋 1. Session History & Achievements
-*   **Goal**: Establish a working connection between local Claude Code CLI and remote AWS EC2 MCP Server, resolve JWT decoding validation failures, and bypass host-header DNS rebinding blocks.
+*   **Goal**: Establish a working connection between local Claude Code CLI and remote AWS EC2 MCP Server, resolve JWT decoding validation failures, bypass host-header DNS rebinding blocks, and troubleshoot graph search hopping failures.
 *   **Achievements**:
     *   Resolved `at_hash` validation error by disabling the access token hash checks in `jwt.decode`.
     *   Bypassed the MCP SDK's built-in DNS Rebinding protection check by configuring Nginx to forward `Host 127.0.0.1:8000` to the Uvicorn backend.
     *   Fixed the client-side `HTTP 404: Not Found` double-prefix routing issue on POST requests by removing the explicit `mount_path` from FastMCP's `sse_app`.
     *   Successfully established the remote connection between Claude Code CLI and GraphMind MCP Server.
+    *   Diagnosed GoT reasoning "hopping" failure where queries returned empty candidates due to an empty remote Neo4j instance.
+    *   Formulated a low-resource database transfer plan (compressing the 21.8 MB local database folder and uploading it via `scp`) to bypass heavy server-side schema reconstruction.
+    *   Documented the exact extraction, container mount check, and Docker container recreate steps for the next session.
     *   Documented a comprehensive, step-by-step [AWS_DEPLOYMENT.md](file:///D:/programming/RAG_and_MCP_examples/AWS_DEPLOYMENT.md) guide.
 
 ---
@@ -191,3 +194,12 @@ This section documents the debugging, Nginx reverse-proxy configuration adjustme
     ```python
     app.mount("/mcp", mcp.sse_app())
     ```
+
+### Lesson E: Graph Search Hopping Failure due to Empty Neo4j Database
+*   **The Problem**: After setting up a clean Neo4j instance on EC2, the database is empty by default and lacks any nodes or relationships (causing the warning: `warn: label does not exist. The label Page does not exist in database neo4j`). Consequently, the GoT engine queries for linked page candidates return zero results, preventing the LLM from making any "hops" or traversals.
+*   **The Fix**: Instead of running resource-heavy import scripts on a small remote instance, migrate the database from the local environment:
+    1.  Zip the local Neo4j Desktop database `data` folder (excluding application settings and binaries).
+    2.  `scp` the zip to the EC2 host.
+    3.  Stop the remote Neo4j Docker container, clear old data, and extract the archive directly to `neo4j/data/` (ensuring no double-nested directory issue).
+    4.  Apply docker-friendly owner permissions `sudo chown -R 7474:7474 neo4j/data` and restart the container to restore the graph state immediately.
+    5.  Verify mounts via `sudo docker inspect -f '{{ .Mounts }}' neo4j` to ensure the host path matches the container destination.
