@@ -219,7 +219,7 @@ app.add_middleware(
 )
 
 # 5. Mount FastMCP using sse_app() to support remote server connections
-app.mount("/mcp", mcp.sse_app(mount_path="/mcp"))
+app.mount("/mcp", mcp.sse_app())
 
 # 6. OAuth & Login endpoints
 @app.get("/login")

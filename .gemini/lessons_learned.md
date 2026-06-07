@@ -140,3 +140,46 @@ This section documents the security verification, bug fixes, FastMCP mount path 
 1.  **Header Splitting Safety**: When parsing headers manually in ASGI middleware, never assume index positions (like `split(" ")[1]`). Always check parts length or use `split(maxsplit=1)` to prevent `IndexError` crashes.
 2.  **CORS for Headless Tools**: Even if MCP servers are primarily designed for desktop apps (Claude Desktop), they are increasingly consumed by browser-based IDEs (Cursor, IDX) and dashboard UIs. Register `CORSMiddleware` early.
 3.  **Local Sync vs Async Event Loops**: When running intensive calculations (like GoT LangGraph chains or complex SQL queries) inside async FastAPI handlers, wrap the calls in `asyncio.to_thread` to keep the event loop unblocked.
+
+---
+
+# 🧠 Session History, Lessons Learned, & Tips (8th June 2026)
+
+This section documents the debugging, Nginx reverse-proxy configuration adjustments, and python-jose OIDC validation fixes implemented during the local and remote deployment of the **GraphMind MCP Server**.
+
+## 📋 1. Session History & Achievements
+*   **Goal**: Establish a working connection between local Claude Code CLI and remote AWS EC2 MCP Server, resolve JWT decoding validation failures, and bypass host-header DNS rebinding blocks.
+*   **Achievements**:
+    *   Resolved `at_hash` validation error by disabling the access token hash checks in `jwt.decode`.
+    *   Bypassed the MCP SDK's built-in DNS Rebinding protection check by configuring Nginx to forward `Host 127.0.0.1:8000` to the Uvicorn backend.
+    *   Patched local and remote Nginx configuration files to ensure project-level settings match.
+    *   Documented a comprehensive, step-by-step [AWS_DEPLOYMENT.md](file:///D:/programming/RAG_and_MCP_examples/AWS_DEPLOYMENT.md) guide.
+
+---
+
+## 🛠️ 2. Core Diagnostic Failures & Solutions
+
+### Lesson A: Pip RAM-based `/tmp` disk quota constraint
+*   **The Problem**: Running `pip install` on heavy dependencies (PyTorch + CUDA wheels, totaling 3+ GB) on standard EC2 instances can trigger `OSError: [Errno 122] Disk quota exceeded`. This is because pip defaults to unpacking downloads in `/tmp`, which is mounted as a RAM-based `tmpfs` disk capped at 1.9 GB, even if the primary EBS root disk has 20+ GB free.
+*   **The Fix**: Override the temporary directory environment variable (`TMPDIR`) to a folder on the persistent EBS disk, and run pip with `--no-cache-dir`:
+    ```bash
+    TMPDIR=/home/ubuntu/RAG_and_MCP_examples/tmp pip install --no-cache-dir -r requirements.txt
+    ```
+
+### Lesson B: python-jose `at_hash` token validation crash
+*   **The Problem**: Google ID Tokens contain an `at_hash` (Access Token Hash) claim. When using `python-jose`'s `jwt.decode` to validate OIDC identity, the library fails with `JWTError: No access_token provided to compare against at_hash claim` because the MCP client only sends the ID Token.
+*   **The Fix**: Pass `options={"verify_at_hash": False}` to the `jwt.decode` call to skip the access token hash check, which is safe since the ID token's signature is already validated using Google's public JWK certs:
+    ```python
+    jwt.decode(token, key, audience=client_id, options={"verify_at_hash": False})
+    ```
+
+### Lesson C: MCP SDK DNS Rebinding Protection / Host Header Mismatch
+*   **The Problem**: The MCP Python SDK's `SseServerTransport` incorporates `TransportSecurityMiddleware` to prevent DNS rebinding. It checks the request's `Host` header. Under Nginx reverse proxy settings, Nginx passes `Host $host` (e.g. `ragmcp.duckdns.org`), which the SDK rejects with `ValueError: Request validation failed` and returns `421 Misdirected Request` (`Invalid Host header`). Setting the host to `localhost` or `127.0.0.1` without the port still fails because Uvicorn is bound to `127.0.0.1:8000` and the port mismatch triggers the validation failure.
+*   **The Fix**: Configure Nginx's reverse proxy block to explicitly pass the exact loopback IP address and port that the Uvicorn process is listening on:
+    ```nginx
+    location /mcp {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host 127.0.0.1:8000;
+        ...
+    }
+    ```
