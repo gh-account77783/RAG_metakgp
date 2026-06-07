@@ -88,3 +88,55 @@ This combination of standard multi-document RAG and GoT graph traversal ensures 
 2.  **Visited Page Sanitization**: When tracking visited pages to prevent loops, keep their representation uniform (e.g., standard clean URLs). If you mix title strings and raw URLs in your visited tracking set, the loop detection will fail.
 3.  **Parallel Multi-Agent Judges (MoE)**: Running multiple expert prompt loops (Source Matcher, Logic Auditor, Hallucination Hunter) concurrently using `RunnableParallel` drastically improves auditing speed compared to sequential calls.
 4.  **Transaction Consuming in Neo4j**: Always ensure Cypher queries consume results (`result.consume()`) or convert records directly to primitive values (`result.single()` or lists) before closing sessions to prevent silent rollbacks.
+
+---
+
+# 🧠 Session History, Lessons Learned, & Tips (7th June 2026)
+
+This section documents the security verification, bug fixes, FastMCP mount path configurations, and automated deployment scripts implemented for the remote serving of the **GraphMind MCP Server**.
+
+## 📋 1. Session History & Achievements
+*   **Goal**: Secure and productionize the remote MCP server (`mcp_server.py`), fix connection routing for Server-Sent Events (SSE), resolve potential runtime exception bugs, and create an automated deployment guide script.
+*   **Accomplishments**:
+    *   Fixed FastMCP SSE App Mount Path prefix routing by adding `mount_path="/mcp"` to `mcp.sse_app`.
+    *   Resolved a potential crash (`IndexError`) in authentication middleware by replacing direct header splits with `split(maxsplit=1)`.
+    *   Implemented EventSource-compatible query-string parameter authentication (`?token=...`) as a fallback for browser/web-based MCP clients.
+    *   Improved Google public JWK caching resilience to handle API network timeouts by reusing cached certs.
+    *   Configured `CORSMiddleware` on the FastAPI host to allow web-based preflight `OPTIONS` requests from remote clients.
+    *   Caught and fixed a serialization bug where `neo4j.get_page_info` was returning custom Neo4j `Record` objects, converting them to standard python `dict` structures using `record.data()` and enforcing type safety on empty lookups.
+    *   Staged all updated backend files and packaged all manual EC2 steps into an executable `deploy.sh` script.
+
+---
+
+## 🛠️ 2. Core Diagnostic Failures & Solutions
+
+### Lesson A: FastMCP SSE Mount Path Trap
+*   **The Problem**: Mounting the FastMCP sub-app inside FastAPI via `app.mount("/mcp", mcp.sse_app())` without passing `mount_path` defaults the internal SSE settings to the root path. When clients request the SSE channel, the server returns the message endpoint headers pointing to the root `/messages` instead of `/mcp/messages`.
+*   **The Fix**: Explicitly declare `mount_path` during instantiation:
+    ```python
+    app.mount("/mcp", mcp.sse_app(mount_path="/mcp"))
+    ```
+
+### Lesson B: Web/Browser EventSource Custom Header Limits
+*   **The Problem**: Traditional browser-based JavaScript `EventSource` (SSE client) APIs do not allow customizing HTTP headers (e.g., adding `Authorization: Bearer <token>`). As a result, web clients cannot connect to authenticated SSE endpoints.
+*   **The Fix**: Add query string fallback check in the custom ASGI middleware:
+    ```python
+    if not token:
+        import urllib.parse
+        query_string = scope.get("query_string", b"").decode("utf-8")
+        params = urllib.parse.parse_qs(query_string)
+        token_list = params.get("token")
+        if token_list:
+            token = token_list[0]
+    ```
+
+### Lesson C: Custom Database Objects Serialization Crashes
+*   **The Problem**: Neo4j session queries return driver-specific `Record` objects. While they support dictionary-style access (`record['key']`), they are custom Python classes that will raise a serialization error when FastMCP attempts to return them in JSON format to the MCP client.
+*   **The Fix**: Always call `record.data()` to serialize the query outcomes to standard Python primitives at the database driver boundary.
+
+---
+
+## 💡 3. General Tips & Tricks for Remote MCP Deployment
+1.  **Header Splitting Safety**: When parsing headers manually in ASGI middleware, never assume index positions (like `split(" ")[1]`). Always check parts length or use `split(maxsplit=1)` to prevent `IndexError` crashes.
+2.  **CORS for Headless Tools**: Even if MCP servers are primarily designed for desktop apps (Claude Desktop), they are increasingly consumed by browser-based IDEs (Cursor, IDX) and dashboard UIs. Register `CORSMiddleware` early.
+3.  **Local Sync vs Async Event Loops**: When running intensive calculations (like GoT LangGraph chains or complex SQL queries) inside async FastAPI handlers, wrap the calls in `asyncio.to_thread` to keep the event loop unblocked.

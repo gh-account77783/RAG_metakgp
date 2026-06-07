@@ -10,8 +10,9 @@ import httpx
 import asyncio
 from typing import Dict, Any
 from fastapi import FastAPI, Depends, Header, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from mcp.server.fastmcp import FastMCP
 from jose import jwt, JWTError
 from RAG.got_engine import GoTReasoningEngine
@@ -111,7 +112,8 @@ class TokenValidator:
                 key, 
                 algorithms=["RS256"], 
                 audience=self.client_id, 
-                issuer="https://accounts.google.com"
+                issuer="https://accounts.google.com",
+                options={"verify_at_hash": False}
             )
         except JWTError as e:
             raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")
@@ -181,12 +183,25 @@ class MCPAuthMiddleware:
                         "body": response_body,
                     })
                     return
-
+ 
         await self.app(scope, receive, send)
 
 # 4. Initialize FastAPI Host App & Register Authentication Middleware
 app = FastAPI(title="GraphMind Server Host")
 validator = TokenValidator(client_id=os.getenv("GOOGLE_CLIENT_ID", ""))
+
+# Add custom exception handler for 404s to return OAuth-compliant error responses to Claude Code
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc):
+    if exc.status_code == 404:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "not_found", "error_description": exc.detail}
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
 
 # Add CORS Middleware to support web/browser-based MCP clients
 app.add_middleware(
