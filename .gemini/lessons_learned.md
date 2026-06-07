@@ -145,14 +145,15 @@ This section documents the security verification, bug fixes, FastMCP mount path 
 
 # 🧠 Session History, Lessons Learned, & Tips (8th June 2026)
 
-This section documents the debugging, Nginx reverse-proxy configuration adjustments, and python-jose OIDC validation fixes implemented during the local and remote deployment of the **GraphMind MCP Server**.
+This section documents the debugging, Nginx reverse-proxy configuration adjustments, python-jose OIDC validation fixes, and routing resolution implemented during the local and remote deployment of the **GraphMind MCP Server**.
 
 ## 📋 1. Session History & Achievements
 *   **Goal**: Establish a working connection between local Claude Code CLI and remote AWS EC2 MCP Server, resolve JWT decoding validation failures, and bypass host-header DNS rebinding blocks.
 *   **Achievements**:
     *   Resolved `at_hash` validation error by disabling the access token hash checks in `jwt.decode`.
     *   Bypassed the MCP SDK's built-in DNS Rebinding protection check by configuring Nginx to forward `Host 127.0.0.1:8000` to the Uvicorn backend.
-    *   Patched local and remote Nginx configuration files to ensure project-level settings match.
+    *   Fixed the client-side `HTTP 404: Not Found` double-prefix routing issue on POST requests by removing the explicit `mount_path` from FastMCP's `sse_app`.
+    *   Successfully established the remote connection between Claude Code CLI and GraphMind MCP Server.
     *   Documented a comprehensive, step-by-step [AWS_DEPLOYMENT.md](file:///D:/programming/RAG_and_MCP_examples/AWS_DEPLOYMENT.md) guide.
 
 ---
@@ -182,4 +183,11 @@ This section documents the debugging, Nginx reverse-proxy configuration adjustme
         proxy_set_header Host 127.0.0.1:8000;
         ...
     }
+    ```
+
+### Lesson D: FastMCP Double Prefix 404 (`/mcp/mcp/messages/`)
+*   **The Problem**: When mounting the FastMCP SSE sub-app inside a main FastAPI app via `app.mount("/mcp", mcp.sse_app())`, FastAPI passes the mount prefix `/mcp` in the ASGI scope as `root_path`. If `mount_path="/mcp"` is also explicitly passed to `sse_app(mount_path="/mcp")`, the FastMCP SDK appends the prefix twice, advertising the message endpoint as `/mcp/mcp/messages/?session_id=...` which returns a `404 Not Found` error when the client attempts to POST to it.
+*   **The Fix**: Mount the sub-app without the explicit `mount_path` parameter, allowing the ASGI `root_path` propagation to handle the prefix cleanly:
+    ```python
+    app.mount("/mcp", mcp.sse_app())
     ```
