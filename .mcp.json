@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "graphmind-remote": {
+      "type": "sse",
+      "url": "https://ragmcp.duckdns.org/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IjdiMDIxNjcxZWRlOTBlZTVhMzc1YzAyMmE1MjNkNDkwMTgxYTJjOWQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiI1NjY5NDM1NTc2OTctNmliN2YzMmwyZWJhM3ZqaGpmNHZyNzlhaWdvOTdzdTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiI1NjY5NDM1NTc2OTctNmliN2YzMmwyZWJhM3ZqaGpmNHZyNzlhaWdvOTdzdTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMTIxNzEzMTIwMTc5ODI3MzkxODQiLCJlbWFpbCI6Im9mZmljaWFsNzc3ODNAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImF0X2hhc2giOiJCWnJhRWd0RzJCQ0tESGxKUEZKcUJnIiwibmFtZSI6Ik9mZmljaWFsIiwicGljdHVyZSI6Imh0dHBzOi8vbGgzLmdvb2dsZXVzZXJjb250ZW50LmNvbS9hL0FDZzhvY0oxd2Y0MElRWFpqRUxnRzFBV0VBV1kxWnZ2TmNGdEtJTC1ZVU52bURqandoVlRydmc9czk2LWMiLCJnaXZlbl9uYW1lIjoiT2ZmaWNpYWwiLCJpYXQiOjE3ODA4NjU0MTUsImV4cCI6MTc4MDg2OTAxNX0.1AA4JoGdThmNYQoNeQVCqOxF5v7C6s6dikbt3GM-McXRX-xCCFLdNIzjuAJXihPSrBHLFq8nKqBLA_AYu7853gqePhejYGh7CyHsUuEk45PLluLWHjwQVMIgT_WsT1NXZ7eW_e-w5K56hzipaLfITHrVm_6zpIB5IVj6iZmjFjd0zRPZTgL4_Iww4tSGlO_fQ5hO4jeyro3Q_WoyPgXTbXW6FRaKQgNeckh2dKRqex34mCDQ7Iclbi2vpoUu13WTQB4tNOUFQ64uUQoD1cYs9oA3bIHcj_bW6_TJ3uoYQK4gEOlF0HMAkZv-eVp-r-HK_FHLuUvydFHp-B6pF5SuGA"
+      }
+    }
+  }
+}
