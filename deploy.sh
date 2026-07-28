@@ -8,16 +8,6 @@
 
 set -euo pipefail
 
-# Configuration
-INSTALL_DIR="/home/ubuntu/RAG_and_MCP_examples"
-SERVICE_NAME="graphmind"
-NGINX_CONF="/etc/nginx/sites-available/graphmind"
-
-# 1. Print header
-echo "=============================================================================="
-echo "🧠 GraphMind Remote MCP Server Auto-Deployment Script"
-echo "=============================================================================="
-
 # Check if run as root/sudo for packages
 if [ "$EUID" -ne 0 ]; then
     echo "❌ Please run this script with sudo or as root."
@@ -25,7 +15,18 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Get current user who ran sudo
-ACTUAL_USER="${SUDO_USER:-ubuntu}"
+ACTUAL_USER="${SUDO_USER:-$(logname 2>/dev/null || echo ubuntu)}"
+ACTUAL_HOME=$(eval echo "~$ACTUAL_USER")
+
+# Configuration (defaults to directory where script is run if git repo exists, or user home)
+if [ -f "$(pwd)/mcp_server.py" ]; then
+    INSTALL_DIR="$(pwd)"
+else
+    INSTALL_DIR="$ACTUAL_HOME/RAG_and_MCP_examples"
+fi
+SERVICE_NAME="graphmind"
+NGINX_CONF="/etc/nginx/sites-available/graphmind"
+
 echo "👤 Current user: $ACTUAL_USER"
 echo "📂 Installation directory: $INSTALL_DIR"
 
@@ -111,7 +112,7 @@ mkdir -p "$INSTALL_DIR/neo4j/data"
 chown -R 7474:7474 "$INSTALL_DIR/neo4j/data"
 
 # Extract Neo4j password from env file (defaulting to 'password' if not set)
-NEO4J_PASS=$(grep "NEO4J_PASSWORD" "$ENV_FILE" | cut -d'=' -f2- || echo "password")
+NEO4J_PASS=$(grep -E "^NEO4J_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "password")
 if [ -z "$NEO4J_PASS" ]; then NEO4J_PASS="password"; fi
 
 if docker ps -a --format '{{.Names}}' | grep -Eq "^neo4j$"; then
@@ -178,7 +179,7 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host localhost;
+        proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -188,7 +189,7 @@ server {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
-        proxy_set_header Host localhost;
+        proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;

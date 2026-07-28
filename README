@@ -151,35 +151,105 @@ The indexer skips a page URL that already exists in Chroma. If you substantially
 Treat a corpus refresh as a coordinated operation: rebuild or restore Chroma
 and Neo4j from the same `cleaned_wiki.jsonl` input before serving requests.
 
-## Start the application
+## How to Run & Use GraphMind
 
-Start Neo4j first, then launch the Streamlit interface:
+### 1. Run RAG Only (Streamlit UI or Python CLI)
+
+Ensure Neo4j and Ollama settings are configured in `.env`, then start the Streamlit web application:
 
 ```powershell
 streamlit run app.py
 ```
 
-Open the local URL Streamlit prints, ask a MetaKGP question, and expand **View Reasoning Trace** to inspect the selected graph path and verification output.
+- **How to use**: Open the URL printed by Streamlit (`http://localhost:8501`). Type your MetaKGP campus question in the chat bar. Expand **View Reasoning Trace** to inspect the interactive thought graph and Mixture-of-Experts (MoE) verifier breakdown.
+- **Python CLI / Programmatic Usage**:
+  ```python
+  from RAG.got_engine import GoTReasoningEngine
 
-## Start the MCP server
+  engine = GoTReasoningEngine()
+  result = engine.reason("What is MetaKGP?")
+  print("Answer:", result["answer"])
+  print("Graph Path:", result["path"])
+  print("Verification:", result["verification"])
+  ```
 
-For local stdio clients such as a desktop MCP host:
+---
 
-```powershell
-python mcp_server.py
+### 2. Run MCP + RAG Locally (with Authentication)
+
+The MCP server exposes GraphMind's reasoning engine to external AI clients (e.g. Cursor, Claude Desktop, custom agents).
+
+#### Start the MCP Server:
+- **For SSE (Server-Sent Events) HTTP Development**:
+  ```powershell
+  python mcp_server.py sse
+  ```
+  *(Serves FastAPI on `http://127.0.0.1:8000/mcp`)*
+- **For Stdio Mode** (Desktop MCP Hosts):
+  ```powershell
+  python mcp_server.py
+  ```
+
+#### Authentication Options:
+1. **Static Bearer Token (`GRAPHMIND_API_KEY`)**:
+   Set `GRAPHMIND_API_KEY` in `.env` (e.g., `GRAPHMIND_API_KEY="my-secret-key"`). Pass `Authorization: Bearer my-secret-key` in HTTP headers.
+2. **Google OAuth 2.0 Login**:
+   Navigate to `http://localhost:8000/login` in your browser, log in with Google, and copy the returned short-lived token.
+
+#### How to Connect from an MCP Client:
+Add the following to your client config (e.g., `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "graphmind-local": {
+      "type": "sse",
+      "url": "http://127.0.0.1:8000/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer <YOUR_GRAPHMIND_API_KEY>"
+      }
+    }
+  }
+}
 ```
 
-For SSE/HTTP development:
+---
 
-```powershell
-python mcp_server.py sse
-```
+### 3. Deploy on AWS EC2 (Automated Deployment)
 
-This serves FastAPI on `http://127.0.0.1:8000` and mounts the MCP SSE application under `/mcp`. Requests to MCP routes require either `Authorization: Bearer <GRAPHMIND_API_KEY>` or a valid Google ID token.
+GraphMind includes an automated deployment script ([deploy.sh](file:///D:/programming/RAG_and_MCP_examples/deploy.sh)) to run FastAPI, Uvicorn, Nginx (with HTTPS SSL), Neo4j (Docker), and ChromaDB on a single AWS Ubuntu 22.04 LTS instance.
 
-`.mcp.json` is a safe template, not a credential store. Replace the placeholder host and configure the header using your MCP client’s supported environment-variable mechanism.
+#### Step-by-Step AWS Deployment:
 
-For an EC2, Docker/Neo4j, Nginx, TLS, and systemd deployment, see [the AWS deployment guide](docs/deployment/AWS_DEPLOYMENT.md).
+1. **Provision EC2 Instance & DNS**:
+   - Launch Ubuntu 22.04 LTS instance (`t3.medium` or `t3.large`, 30GB storage).
+   - Open Security Group Inbound ports: `22` (SSH), `80` (HTTP), `443` (HTTPS).
+   - Point your domain A-record (e.g. `graphmind.your-domain.com`) to your EC2 Public IP.
+
+2. **Upload Local Vector Database & Environment**:
+   ```bash
+   # On local machine:
+   tar -czvf vector_store.tar.gz VectorStore
+   scp -i your-key.pem vector_store.tar.gz .env ubuntu@<YOUR-EC2-IP>:/home/ubuntu/
+   ```
+
+3. **Execute Auto-Deployment Script on EC2**:
+   ```bash
+   # Connect to EC2 instance:
+   ssh -i your-key.pem ubuntu@<YOUR-EC2-IP>
+
+   # Clone repo, extract data, and run script:
+   git clone https://github.com/gh-account77783/RAG_metakgp.git RAG_and_MCP_examples
+   mkdir -p RAG_and_MCP_examples/VectorStore
+   tar -xzvf vector_store.tar.gz -C RAG_and_MCP_examples/
+   mv .env RAG_and_MCP_examples/
+
+   cd RAG_and_MCP_examples
+   chmod +x deploy.sh
+   sudo ./deploy.sh graphmind.your-domain.com
+   ```
+
+For full architectural details, see the [AWS Deployment Guide](docs/deployment/AWS_DEPLOYMENT.md).
 
 ## Evaluate the system
 
