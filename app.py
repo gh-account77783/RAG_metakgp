@@ -4,7 +4,6 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 from RAG.got_engine import GoTReasoningEngine
-import networkx as nx
 from streamlit_agraph import agraph, Node, Edge, Config
 
 # Page configuration
@@ -137,6 +136,3 @@ if prompt := st.chat_input("Ask something about MetaKGP..."):
             except Exception as e:
                 st.error(f"An error occurred during reasoning: {e}")
                 st.session_state.messages.append({"role": "assistant", "content": f"Error: {e}"})
-
-# Custom function to handle citations in text (simple replacement)
-# In a real scenario, we would parse the answer and insert links.

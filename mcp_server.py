@@ -1,5 +1,6 @@
 import os
 import sys
+import urllib.parse
 from dotenv import load_dotenv
 
 # Run load_dotenv() at the very top to ensure env vars are populated
@@ -8,7 +9,7 @@ load_dotenv()
 import time
 import httpx
 import asyncio
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 from fastapi import FastAPI, Depends, Header, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,14 +18,11 @@ from mcp.server.fastmcp import FastMCP
 from jose import jwt, JWTError
 from RAG.got_engine import GoTReasoningEngine
 
-# 1. Initialize FastMCP in stateless mode
 mcp = FastMCP("GraphMind", stateless_http=True)
 
-# Resolve DB path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VECTOR_STORE_PATH = os.path.join(BASE_DIR, "VectorStore")
 
-# Lazy-loaded reasoning engine to prevent FastAPI startup failures if databases are booting
 _engine = None
 
 def get_engine() -> GoTReasoningEngine:
@@ -33,7 +31,6 @@ def get_engine() -> GoTReasoningEngine:
         _engine = GoTReasoningEngine(vector_store_path=VECTOR_STORE_PATH)
     return _engine
 
-# Expose tools using FastMCP decorator syntax
 @mcp.tool()
 async def query_graphmind(query: str) -> str:
     """Run GraphMind GoT reasoning engine over MetaKGP data to return verified answers."""
@@ -56,7 +53,6 @@ async def get_page_info(url: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-# 2. Asynchronous Token Validation class
 class TokenValidator:
     def __init__(self, client_id: str):
         self.client_id = client_id
@@ -118,73 +114,61 @@ class TokenValidator:
         except JWTError as e:
             raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")
 
-# 3. Custom ASGI middleware for robust token authentication (especially for SSE)
 class MCPAuthMiddleware:
     def __init__(self, app, validator: TokenValidator, static_key: str):
         self.app = app
         self.validator = validator
         self.static_key = static_key
 
+    @staticmethod
+    def _extract_token(scope) -> Optional[str]:
+        """Read a bearer token from the header or SSE query string."""
+        for key, value in scope.get("headers", []):
+            if key.lower() != b"authorization":
+                continue
+            parts = value.decode("utf-8").split(maxsplit=1)
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                return parts[1]
+        query = urllib.parse.parse_qs(scope.get("query_string", b"").decode("utf-8"))
+        tokens = query.get("token")
+        return tokens[0] if tokens else None
+
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            path = scope.get("path", "")
-            method = scope.get("method", "")
-            
-            # Authenticate all routes starting with /mcp, excluding OPTIONS preflights
-            if path.startswith("/mcp") and method != "OPTIONS":
-                headers = scope.get("headers", [])
-                auth_header = None
-                for key, val in headers:
-                    if key.lower() == b"authorization":
-                        auth_header = val.decode("utf-8")
-                        break
-                
-                token = None
-                if auth_header and auth_header.lower().startswith("bearer "):
-                    parts = auth_header.split(maxsplit=1)
-                    if len(parts) == 2:
-                        token = parts[1]
-                
-                # Fallback to query parameter token extraction (for browser-based EventSource)
-                if not token:
-                    import urllib.parse
-                    query_string = scope.get("query_string", b"").decode("utf-8")
-                    params = urllib.parse.parse_qs(query_string)
-                    token_list = params.get("token")
-                    if token_list:
-                        token = token_list[0]
-                
-                is_authorized = False
-                error_message = "Missing or invalid Authorization header."
-                if token:
-                    if self.static_key and token == self.static_key:
-                        is_authorized = True
-                    else:
-                        try:
-                            await self.validator.verify_token(token)
-                            is_authorized = True
-                        except HTTPException as e:
-                            error_message = e.detail
-                        except Exception as e:
-                            error_message = str(e)
-                
-                if not is_authorized:
-                    response_body = f'{{"detail": "Unauthorized: {error_message}"}}'.encode("utf-8")
-                    await send({
-                        "type": "http.response.start",
-                        "status": 401,
-                        "headers": [
-                            (b"content-type", b"application/json"),
-                            (b"content-length", str(len(response_body)).encode("utf-8")),
-                        ],
-                    })
-                    await send({
-                        "type": "http.response.body",
-                        "body": response_body,
-                    })
-                    return
- 
-        await self.app(scope, receive, send)
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        if not scope.get("path", "").startswith("/mcp") or scope.get("method") == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
+
+        token = self._extract_token(scope)
+        error_message = "Missing or invalid Authorization header."
+        if token:
+            if self.static_key and token == self.static_key:
+                await self.app(scope, receive, send)
+                return
+            try:
+                await self.validator.verify_token(token)
+                await self.app(scope, receive, send)
+                return
+            except HTTPException as exc:
+                error_message = exc.detail
+            except Exception as exc:
+                error_message = str(exc)
+
+        response_body = JSONResponse(
+            status_code=401,
+            content={"detail": f"Unauthorized: {error_message}"},
+        ).body
+        await send({
+            "type": "http.response.start",
+            "status": 401,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(response_body)).encode("utf-8")),
+            ],
+        })
+        await send({"type": "http.response.body", "body": response_body})
 
 # 4. Initialize FastAPI Host App & Register Authentication Middleware
 app = FastAPI(title="GraphMind Server Host")
@@ -299,4 +283,3 @@ if __name__ == "__main__":
     else:
         # Run standard stdio transport for local Cursor / Claude Desktop runs
         mcp.run()
-

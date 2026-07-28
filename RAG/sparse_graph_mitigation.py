@@ -1,12 +1,22 @@
 import json
+import logging
 import os
 import time
 from rapidfuzz import process, fuzz
 from sentence_transformers import SentenceTransformer, util
 from neo4j import GraphDatabase
+import torch
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
+FUZZY_THRESHOLD = 93
+SEMANTIC_THRESHOLD = 0.85
+WRITE_BATCH_SIZE = 1000
+PROGRESS_INTERVAL = 500
 
 def main():
     # Neo4j Connection Details
@@ -17,20 +27,20 @@ def main():
     try:
         driver = GraphDatabase.driver(uri, auth=(username, password))
     except Exception as e:
-        print(f"Failed to connect to Neo4j: {e}")
+        logger.error("Failed to connect to Neo4j: %s", e)
         return
 
-    # Load Embedding Model on GPU
-    print("Loading embedding model for semantic similarity on GPU (RTX 4050)...")
-    model = SentenceTransformer('BAAI/bge-large-en-v1.5', device='cuda')
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info("Loading %s on %s", EMBEDDING_MODEL, device.upper())
+    model = SentenceTransformer(EMBEDDING_MODEL, device=device)
 
     input_path = 'Crawler/cleaned_wiki.jsonl'
 
     if not os.path.exists(input_path):
-        print(f"Input file {input_path} not found.")
+        logger.error("Input file %s not found.", input_path)
         return
 
-    print("Fetching pages from Neo4j...")
+    logger.info("Fetching pages from Neo4j")
     t_start = time.time()
     
     with driver.session() as session:
@@ -38,20 +48,20 @@ def main():
         pages = [{"title": record["title"], "url": record["url"]} for record in result if record["title"]]
 
     if not pages:
-        print("No pages found in Neo4j graph.")
+        logger.warning("No pages found in Neo4j graph.")
         driver.close()
         return
 
-    print(f"Found {len(pages)} pages. Encoding titles to compute similarity matrix on GPU...")
+    logger.info("Found %d pages. Encoding titles for semantic similarity.", len(pages))
     titles = [p["title"] for p in pages]
     
     # GPU-accelerated embedding generation
-    embeddings = model.encode(titles, convert_to_tensor=True, device='cuda')
+    embeddings = model.encode(titles, convert_to_tensor=True, device=device)
     
     entity_links = []
     semantic_links = []
 
-    print("Computing relationships (Fuzzy String & Cosine Similarity)...")
+    logger.info("Computing fuzzy-string and cosine-similarity relationships")
     t_compute = time.time()
     
     # Compute similarity matrix on GPU
@@ -66,7 +76,7 @@ def main():
             limit=5
         )
         for match_text, score, index in matches:
-            if score > 93 and index != i:
+            if score > FUZZY_THRESHOLD and index != i:
                 page_j = pages[index]
                 entity_links.append({
                     "url1": page_i["url"],
@@ -77,7 +87,7 @@ def main():
         # 2. Semantic similarity threshold (> 0.85)
         sim_scores = cos_sim_matrix[i]
         for j, sim in enumerate(sim_scores):
-            if i != j and sim > 0.85:
+            if i != j and sim > SEMANTIC_THRESHOLD:
                 page_j = pages[j]
                 semantic_links.append({
                     "url1": page_i["url"],
@@ -85,19 +95,19 @@ def main():
                     "score": float(sim)
                 })
                 
-        if (i + 1) % 500 == 0:
-            print(f"Computed similarities for {i+1}/{len(pages)} pages...")
+        if (i + 1) % PROGRESS_INTERVAL == 0:
+            logger.info("Computed similarities for %d/%d pages", i + 1, len(pages))
 
-    print(f"Computation complete in {time.time() - t_compute:.2f}s.")
-    print(f"Found {len(entity_links)} entity links and {len(semantic_links)} semantic links.")
+    logger.info("Computation complete in %.2fs.", time.time() - t_compute)
+    logger.info("Found %d entity links and %d semantic links.", len(entity_links), len(semantic_links))
 
     # Write in batches using UNWIND
-    batch_size = 1000
+    batch_size = WRITE_BATCH_SIZE
     
     with driver.session() as session:
         # Write Entity Links
         if entity_links:
-            print(f"Writing {len(entity_links)} ENTITY_LINK relationships to Neo4j...")
+            logger.info("Writing %d ENTITY_LINK relationships to Neo4j", len(entity_links))
             for start_idx in range(0, len(entity_links), batch_size):
                 batch = entity_links[start_idx:start_idx + batch_size]
                 query = """
@@ -108,11 +118,11 @@ def main():
                 """
                 res = session.run(query, batch=batch)
                 stats = res.consume().metadata.get("stats", {})
-                print(f"Wrote ENTITY_LINK batch {start_idx} to {start_idx + len(batch)}. Created: {stats.get('relationships-created', 0)}")
+                logger.info("Wrote ENTITY_LINK batch %d-%d. Created: %d", start_idx, start_idx + len(batch), stats.get("relationships-created", 0))
                 
         # Write Semantic Links
         if semantic_links:
-            print(f"Writing {len(semantic_links)} SEMANTICALLY_RELATED relationships to Neo4j...")
+            logger.info("Writing %d SEMANTICALLY_RELATED relationships to Neo4j", len(semantic_links))
             for start_idx in range(0, len(semantic_links), batch_size):
                 batch = semantic_links[start_idx:start_idx + batch_size]
                 query = """
@@ -123,12 +133,12 @@ def main():
                 """
                 res = session.run(query, batch=batch)
                 stats = res.consume().metadata.get("stats", {})
-                print(f"Wrote SEMANTICALLY_RELATED batch {start_idx} to {start_idx + len(batch)}. Created: {stats.get('relationships-created', 0)}")
+                logger.info("Wrote SEMANTICALLY_RELATED batch %d-%d. Created: %d", start_idx, start_idx + len(batch), stats.get("relationships-created", 0))
 
-    print(f"Sparse graph mitigation complete in {time.time() - t_start:.2f}s!")
+    logger.info("Sparse graph mitigation complete in %.2fs.", time.time() - t_start)
     driver.close()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     main()
-

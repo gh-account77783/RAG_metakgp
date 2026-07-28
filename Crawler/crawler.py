@@ -7,8 +7,11 @@ import time
 import os
 import re
 import io
+import logging
 from urllib.parse import urljoin, urlparse
 from datetime import datetime
+
+from Crawler.links import content_url
 
 # Configuration
 BASE_URL = "https://wiki.metakgp.org"
@@ -18,6 +21,7 @@ VISITED_FILE = "Crawler/scraped_urls.txt"
 FAILED_FILE = "Crawler/failed_pages.txt"
 USER_AGENT = "GraphMindCrawler/1.0 (+https://wiki.metakgp.org/w/GraphMind)"
 REQUEST_DELAY = 1.5
+logger = logging.getLogger(__name__)
 
 def is_content_page(url):
     """Filter out non-content pages based on the plan."""
@@ -45,7 +49,7 @@ def get_all_pages():
     pages = set()
     current_url = START_URL
 
-    print("Discovering pages via Special:AllPages...")
+    logger.info("Discovering pages via Special:AllPages")
     while current_url:
         try:
             response = httpx.get(current_url, headers={"User-Agent": USER_AGENT}, timeout=200)
@@ -69,8 +73,8 @@ def get_all_pages():
             else:
                 current_url = None
 
-        except Exception as e:
-            print(f"Error discovering pages: {e}")
+        except httpx.HTTPError as exc:
+            logger.error("Error discovering pages: %s", exc)
             break
 
     return pages
@@ -91,13 +95,10 @@ def clean_html(soup):
 
         row_text = tr.get_text(strip=True).lower()
         if 'previous year grade distribution' in row_text:
-            # Double Strike Strategy:
-            # 1. Identify the sibling (the actual bar chart)
             next_tr = tr.find_next_sibling('tr')
-            # 2. Destroy the sibling FIRST to avoid orphaned DOM nodes
             if next_tr:
                 next_tr.decompose()
-            # 3. Destroy the header row LAST
+            # Remove the bar chart row that follows the header, then the header itself.
             tr.decompose()
         elif 'email' in row_text:
             tr.decompose()
@@ -142,8 +143,8 @@ def process_tables(soup):
 
             # Replace table with its clean markdown representation
             table.replace_with(f"\n\n{df.to_markdown(index=False)}\n\n")
-        except Exception as e:
-            print(f"Could not process table {i}: {e}")
+        except (ValueError, ImportError) as exc:
+            logger.warning("Could not process table %d: %s", i, exc)
     return soup
 
 def extract_links(soup):
@@ -152,11 +153,11 @@ def extract_links(soup):
     """
     links = []
     for a in soup.find_all("a", href=True):
-        href = a['href']
-        # Ensure it's an internal wiki link (starts with /w/ or /wiki/) and doesn't contain a colon (:)
-        if (href.startswith("/w/") or href.startswith("/wiki/")) and ":" not in href:
-            full_url = urljoin(BASE_URL, href)
-            links.append({"text": a.get_text(strip=True), "url": full_url})
+        href = a["href"]
+        full_url = content_url(href)
+        if not full_url:
+            continue
+        links.append({"text": a.get_text(strip=True), "url": full_url})
     return links
 
 def scrape_page(url):
@@ -200,8 +201,8 @@ def scrape_page(url):
             "content": markdown_content,
             "timestamp": datetime.now().isoformat()
         }
-    except Exception as e:
-        print(f"Failed to scrape {url}: {e}")
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to scrape %s: %s", url, exc)
         return None
 
 def main(limit=None):
@@ -221,15 +222,15 @@ def main(limit=None):
     if limit:
         to_scrape = to_scrape[:limit]
 
-    print(f"Total pages discovered: {len(all_pages)}")
-    print(f"Pages remaining to scrape: {len(to_scrape)}")
+    logger.info("Total pages discovered: %d", len(all_pages))
+    logger.info("Pages remaining to scrape: %d", len(to_scrape))
 
     with open(OUTPUT_FILE, "a", encoding="utf-8") as out_f, \
          open(VISITED_FILE, "a", encoding="utf-8") as vis_f, \
          open(FAILED_FILE, "a", encoding="utf-8") as fail_f:
 
         for url in to_scrape:
-            print(f"Scraping: {url}")
+            logger.info("Scraping: %s", url)
             data = scrape_page(url)
 
             if data:
@@ -246,6 +247,7 @@ def main(limit=None):
             time.sleep(REQUEST_DELAY)
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     import sys
     limit = None
     if len(sys.argv) > 1:

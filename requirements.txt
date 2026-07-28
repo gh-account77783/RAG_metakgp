@@ -20,3 +20,5 @@ mcp
 fastapi
 uvicorn
 python-jose[cryptography]
+rapidfuzz
+pyarrow

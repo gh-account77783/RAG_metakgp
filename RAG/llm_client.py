@@ -1,104 +1,85 @@
+"""Minimal resilient client for the Ollama Cloud chat API."""
+
+import logging
 import os
+import time
+from typing import Any, Dict, Optional
+
 import httpx
 from dotenv import load_dotenv
 
+
 load_dotenv()
+logger = logging.getLogger(__name__)
+
+MODEL_NAME = "gemma4:31b-cloud"
+BASE_URLS = ("https://ollama.com", "https://api.ollama.com")
+MAX_RETRIES = 3
+BACKOFF_FACTOR_SECONDS = 2.0
+
 
 class LLMClient:
-    def __init__(self):
-        # API key for Ollama Cloud
+    """Synchronous Ollama client with bounded retries for transient failures."""
+
+    def __init__(self) -> None:
         self.api_key = os.getenv("ollama_api_key") or os.getenv("OLLAMA_API_KEY")
-        # Try both common base URLs if one fails
-        self.base_urls = ["https://ollama.com", "https://api.ollama.com"]
-        self.current_base_url = self.base_urls[0]
-
+        self.current_base_url = BASE_URLS[0]
         if not self.api_key:
-            print("Warning: OLLAMA_API_KEY not found in environment variables.")
+            logger.warning("OLLAMA_API_KEY is not configured.")
 
-    def _request(self, endpoint, payload):
-        """Helper to send requests to Ollama Cloud, trying fallback base URLs with backoff retries."""
-        import time
-        max_retries = 3
-        backoff_factor = 2.0
-        
-        for base_url in self.base_urls:
+    def _request(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        for base_url in BASE_URLS:
             url = f"{base_url}{endpoint}"
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            for attempt in range(max_retries):
+            for attempt in range(MAX_RETRIES):
                 try:
-                    with httpx.Client() as client:
-                        response = client.post(url, headers=headers, json=payload, timeout=60.0)
-                        if response.status_code == 200:
-                            self.current_base_url = base_url
-                            return response.json()
-                        elif response.status_code in (429, 502, 503, 504):
-                            print(f"Warning: {url} returned status {response.status_code}. Retrying (attempt {attempt + 1}/{max_retries})...")
-                        else:
-                            print(f"Tried {url}: returned {response.status_code}")
-                            break  # Do not retry client errors
-                except Exception as e:
-                    print(f"Error connecting to {url} (attempt {attempt + 1}/{max_retries}): {e}")
-                
-                if attempt < max_retries - 1:
-                    sleep_time = backoff_factor ** attempt
-                    time.sleep(sleep_time)
-        
-        raise Exception(f"Failed to get a successful response from all base URLs for {endpoint}")
-
-    def list_models(self):
-        """List available models on the cloud."""
-        for base_url in self.base_urls:
-            url = f"{base_url}/api/tags"
-            headers = {"Authorization": f"Bearer {self.api_key}"}
-            try:
-                with httpx.Client() as client:
-                    response = client.get(url, headers=headers, timeout=10.0)
-                    if response.status_code == 200:
+                    with httpx.Client(timeout=60.0) as client:
+                        response = client.post(url, headers=headers, json=payload)
+                    if response.is_success:
                         self.current_base_url = base_url
                         return response.json()
-            except Exception as e:
-                print(f"Error listing models from {url}: {e}")
+                    if response.status_code not in (429, 502, 503, 504):
+                        logger.error("Ollama request to %s returned HTTP %d", url, response.status_code)
+                        break
+                    logger.warning("Ollama request to %s returned HTTP %d (attempt %d/%d)", url, response.status_code, attempt + 1, MAX_RETRIES)
+                except httpx.HTTPError as exc:
+                    logger.warning("Ollama request to %s failed (attempt %d/%d): %s", url, attempt + 1, MAX_RETRIES, exc)
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(BACKOFF_FACTOR_SECONDS**attempt)
+        raise RuntimeError(f"No Ollama endpoint completed {endpoint}")
+
+    def list_models(self) -> Optional[Dict[str, Any]]:
+        """Return available remote models, or ``None`` when the service is unavailable."""
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        for base_url in BASE_URLS:
+            try:
+                with httpx.Client(timeout=10.0) as client:
+                    response = client.get(f"{base_url}/api/tags", headers=headers)
+                if response.is_success:
+                    self.current_base_url = base_url
+                    return response.json()
+            except httpx.HTTPError as exc:
+                logger.warning("Could not list models from %s: %s", base_url, exc)
         return None
 
-    def generate(self, prompt, system_prompt="You are a helpful assistant."):
-        """Generate a response from the Ollama Cloud API."""
-        # We'll try common cloud model names if llama3 fails
-        models_to_try = ["gemma4:31b-cloud"]
+    def generate(self, prompt: str, system_prompt: str = "You are a helpful assistant.") -> str:
+        payload = {
+            "model": MODEL_NAME,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+        }
+        try:
+            result = self._request("/api/chat", payload)
+            return result["message"]["content"]
+        except (KeyError, RuntimeError) as exc:
+            logger.error("LLM generation failed: %s", exc)
+            return "Error: LLM generation failed."
 
-        for model in models_to_try:
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                "stream": False
-            }
-            try:
-                result = self._request("/api/chat", payload)
-                return result['message']['content']
-            except Exception as e:
-                print(f"Model {model} failed: {e}")
-
-        return "Error: All attempted models failed to generate a response."
 
 if __name__ == "__main__":
-    try:
-        client = LLMClient()
-        print(f"Testing with base URL: {client.current_base_url}")
-
-        print("Listing models...")
-        models = client.list_models()
-        if models:
-            print(f"Successfully listed models: {models}")
-        else:
-            print("Could not list models.")
-
-        print("Testing generation...")
-        res = client.generate("Hello! Are you working?")
-        print(f"Test response: {res}")
-    except Exception as e:
-        print(f"Failed to initialize or test LLMClient: {e}")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    client = LLMClient()
+    print(client.list_models())

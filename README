@@ -1,121 +1,208 @@
-# DevSoc 2026 Hackathon
-## Advanced LLM Reasoning & Verification Challenge
+# GraphMind
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Status: Active](https://img.shields.io/badge/Status-Active-success)](https://github.com/topics/hackathon)
+GraphMind is a MetaKGP-only question-answering system. It crawls `wiki.metakgp.org`, stores the cleaned pages in a vector index and a Neo4j graph, then answers questions through a bounded Graph-of-Thoughts workflow. Every generated answer is checked by source-matching, hallucination, and logic-review agents before it is returned.
 
-> **Mission:** Build "GraphMind"—an advanced conversational AI that uses **Graph of Thoughts (GoT)** and **Mixture of Experts (MoE)** to provide verified answers using **ONLY** data scraped from [MetaKGP](https://wiki.metakgp.org/).
+The system is intentionally corpus-bound: if the required fact is not in the indexed MetaKGP material, it should return that it does not know.
 
-## Schedule & Timeline
-**Duration:** 5 Days (Monday - Friday)
+## What is included
 
-| Event | Date | Time | Details |
-| :--- | :--- | :--- | :--- |
-| **Kickoff** | **Mon, Jan 12** | 5:00 PM | Problem Release & Team Formation |
-| **Code Freeze** | **Fri, Jan 16** | **12:00 PM** | **Submission Deadline (Strict)** |
+- A polite MetaKGP crawler and Markdown cleaner.
+- Persistent ChromaDB embeddings using `BAAI/bge-large-en-v1.5`.
+- A Neo4j page graph with wiki links, fuzzy entity links, and semantic links.
+- A LangGraph reasoning workflow with a bounded traversal loop and MoE verification.
+- A Streamlit chat interface and an authenticated FastMCP/SSE server.
+- A reproducible synthetic-QA evaluation runner.
 
-## 1. The Problem: "Trust, but Verify"
+## Project layout
 
-Large Language Models (LLMs) often hallucinate when dealing with niche, institutional knowledge. They generate plausible-sounding but factually incorrect information because they lack real-time access to specific local data.
+```text
+.
+├── app.py                       # Streamlit chat entry point
+├── mcp_server.py                # FastAPI + FastMCP entry point
+├── run_eval_300.py              # Dataset generation and evaluation runner
+├── requirements.txt
+├── .env.example                 # Configuration template; never commit .env
+├── Crawler/                     # Ingestion package
+│   ├── crawler.py               # Page discovery, scraping, link extraction
+│   └── cleaner.py               # Markdown/table normalization
+├── RAG/                         # Retrieval and reasoning package
+│   ├── indexing.py              # Chroma indexing command
+│   ├── text.py                  # Deterministic chunking utility
+│   ├── got_engine.py            # Graph-of-Thoughts LangGraph workflow
+│   ├── llm_client.py            # Ollama Cloud client
+│   ├── moe_verifier.py          # Standalone verifier harness
+│   └── sparse_graph_mitigation.py
+├── neo4j/                       # Local Neo4j import/query modules
+│   ├── neo4j_setup.py
+│   └── neo4j_utils.py
+├── tests/                       # Fast unit tests; no external services
+├── docs/ARCHITECTURE.md
+├── docs/deployment/              # AWS deployment guide
+├── docs/notes/                   # Historical engineering notes
+├── artifacts/                    # Generated/debug material; not application source
+│   ├── backups/                  # Transfer archives for Chroma and Neo4j
+│   ├── crawler-debug/            # Saved crawler diagnostic HTML
+│   └── evaluation/               # Generated datasets, checkpoints, and reports
+├── VectorStore/                 # Local Chroma persistence (generated/runtime data)
+└── AWS_DEPLOYMENT.md            # EC2 deployment reference
+```
 
-### The Challenge
-Your task is to build a chatbot that answers questions **strictly** using data you scrape from **MetaKGP / MetaWiki**.
+`Crawler/cleaned_wiki.jsonl` and `VectorStore/` may already exist in this checkout. They are data artifacts, not source code. The application requires both a populated vector store and a populated Neo4j database before it can answer questions.
 
-**Why this is hard:**
-1. **No Pre-made Dataset:** You must build the pipeline to scrape, clean, and index the data yourself.
-2. **Stale Data Risks:** LLMs have outdated internal knowledge about IIT Kharagpur; you must force them to use *your* scraped data.
-3. **Hallucination:** If the scraper misses a page, the LLM might make something up. Your verification system must prevent this.
+## Architecture
 
-## 2. Technical Pillars
+```text
+MetaKGP wiki
+    │
+    ├── Crawler/crawler.py ──> scraped_wiki.jsonl
+    ├── Crawler/cleaner.py ──> cleaned_wiki.jsonl
+    │                              │
+    │                ┌─────────────┴──────────────┐
+    │                ▼                            ▼
+    │      RAG/indexing.py                neo4j/neo4j_setup.py
+    │      Chroma collection              Page and link graph
+    │                │                            │
+    └────────────────┴────> RAG/got_engine.py <──┘
+                                  │
+              retrieve → explore → synthesize → verify
+                                  │
+                        Streamlit UI / MCP tools
+```
 
-### Team Constraint
-* **Team Size:** Strictly **4 Members** per team.
+The reasoning engine begins with three Chroma matches, explores only graph neighbours, and limits traversal to seven reasoning decisions. It sends the collected context to three independent checks—source support, hallucination detection, and logical consistency—before a judge accepts an answer.
 
-### Core Requirements
-Your solution **must** integrate these three techniques:
+## Prerequisites
 
-#### 1. Data Pipeline (Scraping & Indexing)
-* **Scraper:** You must write a script to crawl `wiki.metakgp.org` (and related MetaWiki pages).
-* **Ingestion:** Clean the HTML/Wikitext and chunk it for retrieval (RAG).
-* **Constraint:** **NO external datasets** allowed. If the answer isn't on MetaKGP, the bot should say "I don't know."
+- Python 3.10 or later.
+- A running Neo4j instance (Neo4j 5 recommended).
+- An Ollama Cloud API key with access to `gemma4:31b-cloud`.
+- Optional CUDA-capable PyTorch installation for faster embedding/indexing work.
 
-#### 2. Graph of Thoughts (GoT)
-Model reasoning as a directed graph.
-* **Nodes:** Facts extracted from your scraped documents.
-* **Edges:** Logical connections between different wiki pages.
-* **Goal:** Connect disparate pieces of info (e.g., connect a *Society* page to a *Student* page).
+On Windows, the evaluation runner imports `pyarrow.dataset` before embedding libraries to avoid a DLL load-order issue. Keep that import first in `run_eval_300.py`.
 
-#### 3. Mixture of Experts (MoE) Verification
-Implement specific verifiers that check against your scraped data:
-1. **Source Matcher:** "Does the text in the retrieved chunk actually support this claim?"
-2. **Hallucination Hunter:** "Is the bot inventing details not present in the scraped context?"
-3. **Logic Expert:** "Does the conclusion follow from the premises?"
+## Local setup
 
-## 3. Expected System Behavior
+From the repository root:
 
-### Example Query
-**User:** *"Who are the governors of the Technology Literary Society?"*
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
 
-**System Output:**
-* **Step 1 (Scrape/Retrieve):** System searches vector store for "Technology Literary Society governors".
-* **Step 2 (Reasoning Paths):**
-    * *Path A:* Claims "John Doe" (Based on 2018 data). -> **Context Expert:** Outdated.
-    * *Path B:* Claims "Jane Smith" (Based on hallucination). -> **Source Matcher:** Citation missing.
-    * *Path C:* Claims "Current Governors listed in 2025 section". -> **Source Matcher:** Verified.
-* **Step 3 (Final Answer):** "The current governors are... [List]. (Source: MetaKGP/TLS_Page)"
+Edit `.env` with real values:
 
-## 4. 🤖 Technical Implementation
+```dotenv
+OLLAMA_API_KEY="..."
+NEO4J_URI="bolt://localhost:7687"
+NEO4J_USERNAME="neo4j"
+NEO4J_PASSWORD="..."
 
-### 1. Data Pipeline (Scraping)
-* **Tools Used:** (e.g., Scrapy, Beautiful Soup, Selenium)
-* **Strategy:** Briefly explain how you scraped `wiki.metakgp.org`. How did you handle cleaning and indexing?
-* **Indexing:** (e.g., ChromaDB, FAISS, Pinecone)
+# Required only by the remote MCP service
+GRAPHMIND_API_KEY="a-long-random-value"
+GOOGLE_CLIENT_ID="..."
+GOOGLE_CLIENT_SECRET="..."
+GOOGLE_REDIRECT_URI="http://localhost:8000/callback"
+```
 
-### 2. Graph of Thoughts (GoT)
-* **Reasoning Model:** Explain how your nodes and edges are structured.
-* **Graph Logic:** How do you connect different MetaKGP pages? (e.g., connecting a "Society" page to a "Student" page).
+Do not commit `.env`, API keys, OAuth tokens, Neo4j passwords, or a personalized `.mcp.json`.
 
-### 3. Mixture of Experts (MoE)
-* **Expert 1 (Source Matcher):** How do you verify the text exists in the scraped data?
-* **Expert 2 (Hallucination Hunter):** How do you detect fabricated info?
-* **Expert 3 (Logic Expert):** How do you ensure logical consistency?
+## Build the knowledge base
 
-## 📊 Setup Instructions
-* **Prerequisites:** (e.g., Python 3.10, Neo4j)
-* **Environment Variables:** List required `.env` keys (do not share actual keys).
-* **How to Run Scraper:** `python scrape.py`
-* **How to Run Bot:** `streamlit run app.py`
+Run these stages in order when creating a fresh corpus. Each command is launched from the repository root.
 
+```powershell
+# 1. Discover and scrape MetaKGP pages. Optional integer limits a test crawl.
+python Crawler/crawler.py
+python Crawler/crawler.py 20
 
-## 5. Rules & Constraints
+# 2. Clean the scraped Markdown and table content.
+python Crawler/cleaner.py
 
-### Data Source Rules (Strict)
-1. **Allowed Source:** ONLY `wiki.metakgp.org` (and associated MetaWiki domains).
-2. **Forbidden:** Wikipedia, Google Search API, or pre-trained knowledge usage.
-3. **Scraping:** You must implement the scraping logic. Using a pre-downloaded dump is **not allowed**—your code must show how data is fetched.
+# 3. Create or extend the Chroma collection.
+python RAG/indexing.py
 
-### Tech Stack
-* **Open Source Only:** (LangChain, Scrapy, BeautifulSoup, Selenium, etc.)
-* **API Limits:** Stay within provided free tier limits ($50/team).
+# 4. Import Page nodes and LINKS_TO edges into Neo4j.
+python neo4j/neo4j_setup.py
 
-## 6. Evaluation Criteria
+# 5. Optional: create fuzzy and semantic cross-page relationships.
+python RAG/sparse_graph_mitigation.py
+```
 
-| Criteria | Points | Description |
-| :--- | :--- | :--- |
-| **Data Pipeline** | **30** | Effectiveness of the scraper, cleaning, and indexing strategies. |
-| **Verification (MoE)** | **30** | Ability to detect and stop hallucinations using the experts. |
-| **MetaKGP Fidelity** | **20** | **CRITICAL:** Answers must be traceable back to specific MetaKGP URLs. |
-| **UX & Demo** | **20** | Working chatbot, citation links, and graph visualization. |
+The indexer skips a page URL that already exists in Chroma. If you substantially change cleaning or chunking rules, rebuild the vector store deliberately rather than expecting an incremental command to replace existing page chunks.
 
-## 7. How to Submit
+## Start the application
 
-**Deadline:** Friday, Jan 16 @ 12:00 PM.
+Start Neo4j first, then launch the Streamlit interface:
 
-1. **Fork** this repository.
-2. Create a folder: `submissions/YOUR_TEAM_NAME`.
-3. Include your **Scraper Code** and **Chatbot Code**.
-4. Add a `README.md` using the [Submission Template](./SUBMISSION_TEMPLATE.md).
-5. Open a **Pull Request (PR)** to the `main` branch.
+```powershell
+streamlit run app.py
+```
 
-### Deliverables Checklist
-* [ ] Source Code (Scraper + Bot).
+Open the local URL Streamlit prints, ask a MetaKGP question, and expand **View Reasoning Trace** to inspect the selected graph path and verification output.
+
+## Start the MCP server
+
+For local stdio clients such as a desktop MCP host:
+
+```powershell
+python mcp_server.py
+```
+
+For SSE/HTTP development:
+
+```powershell
+python mcp_server.py sse
+```
+
+This serves FastAPI on `http://127.0.0.1:8000` and mounts the MCP SSE application under `/mcp`. Requests to MCP routes require either `Authorization: Bearer <GRAPHMIND_API_KEY>` or a valid Google ID token.
+
+`.mcp.json` is a safe template, not a credential store. Replace the placeholder host and configure the header using your MCP client’s supported environment-variable mechanism.
+
+For an EC2, Docker/Neo4j, Nginx, TLS, and systemd deployment, see [the AWS deployment guide](docs/deployment/AWS_DEPLOYMENT.md).
+
+## Evaluate the system
+
+```powershell
+python run_eval_300.py
+```
+
+The runner creates synthetic question/answer pairs from cleaned pages when no dataset is present, evaluates the configured number of cases, checkpoints progress after each successful evaluation, and writes JSON and Markdown reports under `artifacts/evaluation/`. It is intentionally sequential by default to respect Ollama Cloud rate limits.
+
+Evaluation uses an LLM-generated dataset and LLM-as-a-judge scoring. Treat the results as regression indicators, not an independent factual benchmark. Add human-reviewed and out-of-domain cases before making production accuracy claims.
+
+## Test and validate
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+The unit tests do not contact Neo4j, Chroma, or Ollama. Before a release, also run the service entry points against configured local dependencies and perform at least one real query through the UI or MCP endpoint.
+
+## Operational notes
+
+- The crawler waits between requests and restricts itself to MetaKGP content pages.
+- Course URLs containing colons are retained; only non-content MediaWiki namespaces are excluded.
+- Vector and graph storage are independent. Rebuild or restore both together when changing the source corpus.
+- Query latency is dominated by remote LLM calls and the four-stage verification flow.
+- Neo4j lookup values are parameterized, and the reasoning prompts explicitly treat user input as untrusted data.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Action |
+| --- | --- | --- |
+| `Input file ... not found` | A previous ingestion stage has not run. | Run the crawler, then the cleaner. |
+| No relevant answers | Chroma or Neo4j is empty, unavailable, or out of sync. | Verify both stores were built from the same cleaned corpus. |
+| `OLLAMA_API_KEY is not configured` | `.env` is missing or not loaded. | Create `.env` from `.env.example` and set the key. |
+| Windows access violation during evaluation | Embedding-library DLL ordering issue. | Keep the top-level `pyarrow.dataset` import in `run_eval_300.py`. |
+| `401 Unauthorized` from MCP | Missing/expired bearer token. | Use `GRAPHMIND_API_KEY` or obtain a fresh Google token. |
+
+## Development principles
+
+Keep source modules small and side-effect free where possible, keep generated stores out of code changes, add unit coverage for deterministic transformations, and preserve the answer contract returned by `GoTReasoningEngine.reason()`:
+
+```python
+{"answer": str, "path": list[str], "knowledge": str, "verification": dict}
+```
