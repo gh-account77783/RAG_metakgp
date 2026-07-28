@@ -1,27 +1,28 @@
+import asyncio
 import os
 import sys
-import urllib.parse
-from dotenv import load_dotenv
-
-# Run load_dotenv() at the very top to ensure env vars are populated
-load_dotenv()
-
 import time
+import urllib.parse
+from typing import Optional
+
 import httpx
-import asyncio
-from typing import Any, Dict, Optional
-from fastapi import FastAPI, Depends, Header, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from jose import JWTError, jwt
 from mcp.server.fastmcp import FastMCP
-from jose import jwt, JWTError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
 from RAG.got_engine import GoTReasoningEngine
+
+load_dotenv()
 
 mcp = FastMCP("GraphMind", stateless_http=True)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VECTOR_STORE_PATH = os.path.join(BASE_DIR, "VectorStore")
+GOOGLE_CERT_CACHE_SECONDS = 86_400
 
 _engine = None
 
@@ -36,7 +37,6 @@ async def query_graphmind(query: str) -> str:
     """Run GraphMind GoT reasoning engine over MetaKGP data to return verified answers."""
     try:
         engine = get_engine()
-        # Run synchronous LangGraph reasoning chain in a worker thread to keep the FastAPI loop unblocked
         result = await asyncio.to_thread(engine.reason, query)
         return result["answer"]
     except Exception as e:
@@ -47,7 +47,6 @@ async def get_page_info(url: str) -> dict:
     """Fetch title and content for a given page URL."""
     try:
         engine = get_engine()
-        # Run synchronous Neo4j lookup in a worker thread to keep the FastAPI loop unblocked
         result = await asyncio.to_thread(engine.neo4j.get_page_info, url)
         return result if result is not None else {"error": "Page not found"}
     except Exception as e:
@@ -60,28 +59,22 @@ class TokenValidator:
         self.keys_fetched_at = 0
         
     async def _get_google_keys(self) -> dict:
-        # Fetch Google public certificates with a 24h cache window
-        if not self.cached_keys or (time.time() - self.keys_fetched_at > 86400):
+        if not self.cached_keys or (time.time() - self.keys_fetched_at > GOOGLE_CERT_CACHE_SECONDS):
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     response = await client.get("https://www.googleapis.com/oauth2/v3/certs")
                     self.cached_keys = response.json()
                     self.keys_fetched_at = time.time()
             except Exception as e:
-                # If we have cached keys, reuse them on failure instead of failing the request
-                if self.cached_keys:
-                    pass
-                else:
+                if not self.cached_keys:
                     raise HTTPException(status_code=502, detail=f"Failed to fetch signing keys from Google: {str(e)}")
         return self.cached_keys
 
     async def verify_token(self, token: str) -> dict:
-        # 1. Fallback check for static API key
         static_key = os.getenv("GRAPHMIND_API_KEY")
         if static_key and token == static_key:
             return {"email": "admin@graphmind.local", "name": "Admin User"}
             
-        # 2. Standard Google OIDC verification
         try:
             try:
                 header = jwt.get_unverified_header(token)
@@ -93,7 +86,7 @@ class TokenValidator:
             keys = google_certs.get("keys", [])
             key = next((k for k in keys if k["kid"] == kid), None)
             
-            # If the key is not in our cache, clear cache and force-fetch from Google once (handles key rotations)
+            # Refresh once to accommodate a Google signing-key rotation.
             if not key:
                 self.cached_keys = None
                 google_certs = await self._get_google_keys()
@@ -156,25 +149,15 @@ class MCPAuthMiddleware:
             except Exception as exc:
                 error_message = str(exc)
 
-        response_body = JSONResponse(
+        response = JSONResponse(
             status_code=401,
             content={"detail": f"Unauthorized: {error_message}"},
-        ).body
-        await send({
-            "type": "http.response.start",
-            "status": 401,
-            "headers": [
-                (b"content-type", b"application/json"),
-                (b"content-length", str(len(response_body)).encode("utf-8")),
-            ],
-        })
-        await send({"type": "http.response.body", "body": response_body})
+        )
+        await response(scope, receive, send)
 
-# 4. Initialize FastAPI Host App & Register Authentication Middleware
 app = FastAPI(title="GraphMind Server Host")
 validator = TokenValidator(client_id=os.getenv("GOOGLE_CLIENT_ID", ""))
 
-# Add custom exception handler for 404s to return OAuth-compliant error responses to Claude Code
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request, exc):
     if exc.status_code == 404:
@@ -187,7 +170,6 @@ async def http_exception_handler(request, exc):
         content={"detail": exc.detail}
     )
 
-# Add CORS Middleware to support web/browser-based MCP clients
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -202,10 +184,8 @@ app.add_middleware(
     static_key=os.getenv("GRAPHMIND_API_KEY", "")
 )
 
-# 5. Mount FastMCP using sse_app() to support remote server connections
 app.mount("/mcp", mcp.sse_app())
 
-# 6. OAuth & Login endpoints
 @app.get("/login")
 async def login():
     client_id = os.getenv("GOOGLE_CLIENT_ID")
@@ -236,7 +216,6 @@ async def oauth_callback(code: str = None, error: str = None):
             status_code=500,
             detail="Google OAuth credentials are not fully configured on the server."
         )
-    # Exchange auth code for Google ID token
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://oauth2.googleapis.com/token",
@@ -275,11 +254,9 @@ async def oauth_callback(code: str = None, error: str = None):
     """
     return HTMLResponse(content=html_content)
 
-# 7. Fallback local CLI runner (Stdio Mode)
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "sse":
         import uvicorn
         uvicorn.run("mcp_server:app", host="127.0.0.1", port=8000, reload=True)
     else:
-        # Run standard stdio transport for local Cursor / Claude Desktop runs
         mcp.run()

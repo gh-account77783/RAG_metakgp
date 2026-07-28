@@ -23,7 +23,6 @@ class LLMClient:
 
     def __init__(self) -> None:
         self.api_key = os.getenv("ollama_api_key") or os.getenv("OLLAMA_API_KEY")
-        self.current_base_url = BASE_URLS[0]
         if not self.api_key:
             logger.warning("OLLAMA_API_KEY is not configured.")
 
@@ -36,7 +35,6 @@ class LLMClient:
                     with httpx.Client(timeout=60.0) as client:
                         response = client.post(url, headers=headers, json=payload)
                     if response.is_success:
-                        self.current_base_url = base_url
                         return response.json()
                     if response.status_code not in (429, 502, 503, 504):
                         logger.error("Ollama request to %s returned HTTP %d", url, response.status_code)
@@ -56,7 +54,6 @@ class LLMClient:
                 with httpx.Client(timeout=10.0) as client:
                     response = client.get(f"{base_url}/api/tags", headers=headers)
                 if response.is_success:
-                    self.current_base_url = base_url
                     return response.json()
             except httpx.HTTPError as exc:
                 logger.warning("Could not list models from %s: %s", base_url, exc)

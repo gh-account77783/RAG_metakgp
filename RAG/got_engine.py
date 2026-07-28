@@ -21,6 +21,7 @@ from typing_extensions import TypedDict
 
 from RAG.llm_client import LLMClient, MODEL_NAME
 
+# The local neo4j/ directory would otherwise collide with the installed neo4j driver package.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "neo4j"))
 from neo4j_utils import Neo4jUtils
 
@@ -34,6 +35,11 @@ SEED_NEIGHBOR_LIMIT = 10
 EXPLORE_NEIGHBOR_LIMIT = 20
 COLLECTION_NAME = "metakgp_wiki"
 EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
+PAGE_QUERY = "MATCH (p:Page {url: $url}) RETURN p.title AS title, p.content AS content"
+NEIGHBORS_QUERY = (
+    "MATCH (p:Page {url: $url})-[:LINKS_TO|ENTITY_LINK|SEMANTICALLY_RELATED]->(n:Page) "
+    "RETURN n.url AS url, n.title AS title LIMIT $limit"
+)
 
 
 class OllamaCloudChat(BaseChatModel):
@@ -157,6 +163,11 @@ def clean_lead_url(lead: str) -> str:
     return match.group(1) if match else lead.strip()
 
 
+def format_page_section(title: str, url: str, content: str) -> str:
+    """Format a page consistently before adding it to the model context."""
+    return f"--- Page: {title} ({url}) ---\n{content[:MAX_CONTENT_CHARS]}"
+
+
 def seed_retrieval(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
     """Retrieve initial vector matches and their immediate graph neighbours."""
     vector_store = (config.get("configurable") or {}).get("vector_store")
@@ -177,15 +188,17 @@ def seed_retrieval(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
         visited_pages.add(url)
         thought_path.append(url)
         sections.append(
-            f"--- Page: {document.metadata.get('title', url)} ({url}) ---\n"
-            f"{(document.page_content or '')[:MAX_CONTENT_CHARS]}"
+            format_page_section(
+                document.metadata.get("title", url),
+                url,
+                document.page_content or "",
+            )
         )
         if graph is None:
             continue
         try:
             neighbours = graph.query(
-                "MATCH (p:Page {url: $url})-[:LINKS_TO|ENTITY_LINK|SEMANTICALLY_RELATED]->(n:Page) "
-                "RETURN n.url AS url, n.title AS title LIMIT $limit",
+                NEIGHBORS_QUERY,
                 {"url": url, "limit": SEED_NEIGHBOR_LIMIT},
             )
             for neighbour in neighbours:
@@ -237,10 +250,7 @@ def explore_lead(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
     next_url = clean_lead_url(state["decision"].next_lead)
 
     try:
-        page = graph.query(
-            "MATCH (p:Page {url: $url}) RETURN p.title AS title, p.content AS content",
-            {"url": next_url},
-        )
+        page = graph.query(PAGE_QUERY, {"url": next_url})
     except Exception:
         page = []
     title = page[0].get("title") if page else next_url
@@ -248,8 +258,7 @@ def explore_lead(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
 
     try:
         neighbours = graph.query(
-            "MATCH (p:Page {url: $url})-[:LINKS_TO|ENTITY_LINK|SEMANTICALLY_RELATED]->(n:Page) "
-            "RETURN n.url AS url, n.title AS title LIMIT $limit",
+            NEIGHBORS_QUERY,
             {"url": next_url, "limit": EXPLORE_NEIGHBOR_LIMIT},
         )
     except Exception:
@@ -262,7 +271,11 @@ def explore_lead(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
         if neighbour["url"] not in visited and candidate not in candidates:
             candidates.append(candidate)
     return {
-        "knowledge_set": state["knowledge_set"] + f"\n\n--- Page: {title} ({next_url}) ---\n{content}",
+        "knowledge_set": (
+            state["knowledge_set"]
+            + "\n\n"
+            + format_page_section(title, next_url, content)
+        ),
         "candidates": candidates,
         "visited_pages": {next_url},
         "thought_path": [next_url],

@@ -4,6 +4,21 @@ GraphMind is a MetaKGP-only question-answering system. It crawls `wiki.metakgp.o
 
 The system is intentionally corpus-bound: if the required fact is not in the indexed MetaKGP material, it should return that it does not know.
 
+## Runtime contract
+
+The public application boundary is `GoTReasoningEngine.reason(query)`, which
+returns:
+
+```python
+{"answer": str, "path": list[str], "knowledge": str, "verification": dict}
+```
+
+The engine first retrieves three Chroma matches, then explores only their
+Neo4j neighbours for at most seven reasoning decisions. It does not crawl,
+index, or mutate either datastore while serving a query. Normal operation
+therefore requires a populated Chroma collection and a Neo4j graph built from
+the same cleaned corpus.
+
 ## What is included
 
 - A polite MetaKGP crawler and Markdown cleaner.
@@ -133,6 +148,9 @@ python RAG/sparse_graph_mitigation.py
 
 The indexer skips a page URL that already exists in Chroma. If you substantially change cleaning or chunking rules, rebuild the vector store deliberately rather than expecting an incremental command to replace existing page chunks.
 
+Treat a corpus refresh as a coordinated operation: rebuild or restore Chroma
+and Neo4j from the same `cleaned_wiki.jsonl` input before serving requests.
+
 ## Start the application
 
 Start Neo4j first, then launch the Streamlit interface:
@@ -173,6 +191,10 @@ The runner creates synthetic question/answer pairs from cleaned pages when no da
 
 Evaluation uses an LLM-generated dataset and LLM-as-a-judge scoring. Treat the results as regression indicators, not an independent factual benchmark. Add human-reviewed and out-of-domain cases before making production accuracy claims.
 
+`run_eval_300.py` and its artifact filenames are legacy names. The current
+number of evaluated cases is controlled by `NUM_QUESTIONS` in that script;
+check its value rather than inferring the count from the filename.
+
 ## Test and validate
 
 ```powershell
@@ -188,6 +210,10 @@ The unit tests do not contact Neo4j, Chroma, or Ollama. Before a release, also r
 - Vector and graph storage are independent. Rebuild or restore both together when changing the source corpus.
 - Query latency is dominated by remote LLM calls and the four-stage verification flow.
 - Neo4j lookup values are parameterized, and the reasoning prompts explicitly treat user input as untrusted data.
+- The Streamlit sidebar identifies configured dependencies; it is not a live
+  dependency-health check.
+- The optional sparse-graph command computes pairwise title similarity and is
+  an offline operation, not part of normal serving.
 
 ## Troubleshooting
 
@@ -201,7 +227,7 @@ The unit tests do not contact Neo4j, Chroma, or Ollama. Before a release, also r
 
 ## Development principles
 
-Keep source modules small and side-effect free where possible, keep generated stores out of code changes, add unit coverage for deterministic transformations, and preserve the answer contract returned by `GoTReasoningEngine.reason()`:
+Keep source modules small and side-effect free where possible, keep generated stores out of code changes, remove only verified dead or duplicated code, and preserve the answer contract returned by `GoTReasoningEngine.reason()`:
 
 ```python
 {"answer": str, "path": list[str], "knowledge": str, "verification": dict}

@@ -5,8 +5,7 @@ import json
 import random
 import time
 import re
-from typing import List, Dict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, Dict, List, Optional
 
 # Set up paths so we can import modules
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -24,13 +23,43 @@ REPORT_PATH = os.path.join(EVALUATION_ARTIFACT_DIR, "eval_report_300.json")
 
 # Config
 NUM_QUESTIONS = 100
-MAX_GENERATION_WORKERS = 1
-MAX_EVAL_WORKERS = 1
 
 class EvaluationPipeline:
     def __init__(self):
         self.llm = LLMClient()
         self.engine = None  # Lazy-loaded for evaluation phase
+
+    @staticmethod
+    def _has_question_and_answer(payload: Dict) -> bool:
+        return bool(payload.get("question") and payload.get("reference_answer"))
+
+    @staticmethod
+    def _has_numeric_score(payload: Dict) -> bool:
+        float(payload.get("score", 0.0))
+        return True
+
+    def _generate_json_with_retries(
+        self,
+        prompt: str,
+        system_prompt: str,
+        validator: Optional[Callable[[Dict], bool]] = None,
+        retries: int = 3,
+        backoff: float = 2.0,
+    ) -> Optional[Dict]:
+        for _ in range(retries):
+            try:
+                response = self.llm.generate(prompt, system_prompt=system_prompt)
+                match = re.search(r"\{.*\}", response, re.DOTALL)
+                if not match:
+                    continue
+                payload = json.loads(match.group(0))
+                if not isinstance(payload, dict):
+                    raise ValueError("Expected a JSON object")
+                if validator is None or validator(payload):
+                    return payload
+            except Exception:
+                time.sleep(backoff)
+        return None
 
     def generate_qa_pair(self, doc: Dict) -> Dict:
         """Generates a Q&A pair from a single wiki document."""
@@ -51,24 +80,18 @@ class EvaluationPipeline:
 
         prompt = f"Title: {title}\nURL: {url}\n\nContent:\n{content}"
 
-        for attempt in range(3):
-            try:
-                res_text = self.llm.generate(prompt, system_prompt=system_prompt)
-                # Parse JSON
-                match = re.search(r'\{.*\}', res_text, re.DOTALL)
-                if match:
-                    data = json.loads(match.group(0))
-                    question = data.get("question")
-                    reference_answer = data.get("reference_answer")
-                    if question and reference_answer:
-                        return {
-                            "ground_truth_url": url,
-                            "ground_truth_title": title,
-                            "question": question,
-                            "reference_answer": reference_answer
-                        }
-            except Exception as e:
-                time.sleep(2)
+        data = self._generate_json_with_retries(
+            prompt,
+            system_prompt,
+            validator=self._has_question_and_answer,
+        )
+        if data is not None:
+            return {
+                "ground_truth_url": url,
+                "ground_truth_title": title,
+                "question": data.get("question"),
+                "reference_answer": data.get("reference_answer"),
+            }
         
         # Fallback if generation failed
         return {
@@ -106,19 +129,16 @@ class EvaluationPipeline:
             random.seed(42)  # For reproducibility
             selected_docs = random.sample(docs, NUM_QUESTIONS)
 
-        print(f"Generating {len(selected_docs)} Q&A pairs concurrently...")
+        print(f"Generating {len(selected_docs)} Q&A pairs...")
         dataset = []
-        
-        with ThreadPoolExecutor(max_workers=MAX_GENERATION_WORKERS) as executor:
-            futures = {executor.submit(self.generate_qa_pair, doc): doc for doc in selected_docs}
-            for i, future in enumerate(as_completed(futures), 1):
-                try:
-                    qa = future.result()
-                    dataset.append(qa)
-                    if i % 10 == 0 or i == len(selected_docs):
-                        print(f"Generated {i}/{len(selected_docs)} questions...")
-                except Exception as e:
-                    print(f"Error generating Q&A for a document: {e}")
+        for i, doc in enumerate(selected_docs, 1):
+            try:
+                qa = self.generate_qa_pair(doc)
+                dataset.append(qa)
+                if i % 10 == 0 or i == len(selected_docs):
+                    print(f"Generated {i}/{len(selected_docs)} questions...")
+            except Exception as e:
+                print(f"Error generating Q&A for a document: {e}")
 
         # Save to disk
         with open(DATASET_PATH, "w", encoding="utf-8") as f:
@@ -150,18 +170,16 @@ class EvaluationPipeline:
             "reason": "<string>"
         }}
         """
-        for attempt in range(3):
-            try:
-                res_text = self.llm.generate(prompt, system_prompt=system_prompt)
-                match = re.search(r'\{.*\}', res_text, re.DOTALL)
-                if match:
-                    data = json.loads(match.group(0))
-                    return {
-                        "score": float(data.get("score", 0.0)),
-                        "reason": data.get("reason", "No reason provided.")
-                    }
-            except Exception:
-                time.sleep(2)
+        data = self._generate_json_with_retries(
+            prompt,
+            system_prompt,
+            validator=self._has_numeric_score,
+        )
+        if data is not None:
+            return {
+                "score": float(data.get("score", 0.0)),
+                "reason": data.get("reason", "No reason provided."),
+            }
         return {"score": 0.0, "reason": "Failed to evaluate via LLM Grader."}
 
     def evaluate_case(self, case: Dict) -> Dict:
@@ -232,20 +250,18 @@ class EvaluationPipeline:
         results = list(completed.values())
 
         if remaining_cases:
-            print(f"Running end-to-end evaluation with {MAX_EVAL_WORKERS} concurrent threads...")
+            print("Running end-to-end evaluation sequentially...")
             # We save progress after every single completion to be 100% resilient
-            with ThreadPoolExecutor(max_workers=MAX_EVAL_WORKERS) as executor:
-                futures = {executor.submit(self.evaluate_case, case): case for case in remaining_cases}
-                for i, future in enumerate(as_completed(futures), 1):
-                    eval_res = future.result()
-                    if eval_res.get("status") == "success":
-                        results.append(eval_res)
-                        # Save progress incrementally
-                        with open(PROGRESS_PATH, "w", encoding="utf-8") as f:
-                            json.dump(results, f, indent=4)
-                        print(f"[{i + len(completed)}/{len(dataset)}] Evaluated: '{eval_res['question']}' -> Score: {eval_res['score']}/5.0 (Recall: {eval_res['hit']})")
-                    else:
-                        print(f"Error evaluating query '{eval_res['question']}': {eval_res.get('error')}")
+            for i, case in enumerate(remaining_cases, 1):
+                eval_res = self.evaluate_case(case)
+                if eval_res.get("status") == "success":
+                    results.append(eval_res)
+                    # Save progress incrementally
+                    with open(PROGRESS_PATH, "w", encoding="utf-8") as f:
+                        json.dump(results, f, indent=4)
+                    print(f"[{i + len(completed)}/{len(dataset)}] Evaluated: '{eval_res['question']}' -> Score: {eval_res['score']}/5.0 (Recall: {eval_res['hit']})")
+                else:
+                    print(f"Error evaluating query '{eval_res['question']}': {eval_res.get('error')}")
 
         # Compute aggregate metrics
         total_eval = len(results)
