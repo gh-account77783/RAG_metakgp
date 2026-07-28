@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "graphmind-remote": {
+      "type": "sse",
+      "url": "https://your-graphmind-host.example/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${GRAPHMIND_API_KEY}"
+      }
+    }
+  }
+}

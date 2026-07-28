@@ -12,3 +12,13 @@ networkx
 python-dotenv
 streamlit
 streamlit-agraph
+langchain
+langchain-community
+langchain-huggingface
+langgraph
+mcp
+fastapi
+uvicorn
+python-jose[cryptography]
+rapidfuzz
+pyarrow
