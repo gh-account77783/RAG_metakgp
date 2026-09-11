@@ -1,3 +1,6 @@
 # git does not commit these files 
 .env
 /docs
+analysis-skills.md
+analysis.md
+cheatsheet.md
