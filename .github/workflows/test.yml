@@ -1,0 +1,42 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  offline:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package and test dependency
+        run: python -m pip install ".[test]"
+      - name: Verify CLI help has no service dependency
+        run: graphmind --help
+      - name: Run offline tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -B -m unittest discover -s tests -v
+
+  integration-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install ".[test]"
+      - name: Report intentionally unavailable external integrations
+        run: >-
+          python -c "print('Neo4j and hosted-model integration require explicit service credentials;
+          they are not counted as passing in this job.')"

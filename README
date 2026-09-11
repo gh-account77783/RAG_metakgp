@@ -1,8 +1,23 @@
 # GraphMind
 
-GraphMind is a MetaKGP-only question-answering system. It crawls `wiki.metakgp.org`, stores the cleaned pages in a vector index and a Neo4j graph, then answers questions through a bounded Graph-of-Thoughts workflow. Every generated answer is checked by source-matching, hallucination, and logic-review agents before it is returned.
+GraphMind is being generalized into a self-hosted document RAG service backed by Chroma and a Neo4j document graph. The installable `graphmind` package currently provides the P1/P2 local milestone: durable SQLite metadata and jobs, validated configuration, host-local UTF-8 TXT import, staged dual-store publication, bounded graph retrieval, and verified citations.
 
-The system is intentionally corpus-bound: if the required fact is not in the indexed MetaKGP material, it should return that it does not know.
+The original MetaKGP crawler and reasoning code remains in the repository as a legacy test prototype. It is not part of the generic package path and is not intended for the final user distribution.
+
+## Generic TXT milestone
+
+Python 3.13, a running Neo4j instance, and the values in `.env.example` are the current tested baseline. Copy `graphmind.example.toml` to a private host configuration and adjust its data and import paths, then run:
+
+```powershell
+python -m pip install .
+graphmind --config graphmind.example.toml init
+graphmind --config graphmind.example.toml doctor
+graphmind --config graphmind.example.toml import .\document.txt
+graphmind --config graphmind.example.toml status
+graphmind --config graphmind.example.toml query "What does the document say?"
+```
+
+The P2 hash embedding is deterministic and requires no model download; it is an integration baseline rather than the final semantic embedding selected in P4. The public reader UI, authenticated remote MCP service, non-TXT formats, and release installers belong to later phases.
 
 ## Runtime contract
 

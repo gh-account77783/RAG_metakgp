@@ -1,0 +1,12 @@
+[graphmind]
+data_dir = ".graphmind-data"
+allowed_import_roots = ["."]
+collection_id = "default"
+collection_name = "graphmind_chunks"
+max_file_bytes = 26214400
+chunk_size = 1200
+chunk_overlap = 120
+embedding_dimension = 384
+job_lease_seconds = 60
+max_queued_jobs = 100
+
