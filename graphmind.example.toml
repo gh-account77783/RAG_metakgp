@@ -9,4 +9,9 @@ chunk_overlap = 120
 embedding_dimension = 384
 job_lease_seconds = 60
 max_queued_jobs = 100
-
+max_extracted_chars = 10000000
+max_archive_entries = 2048
+max_archive_uncompressed_bytes = 104857600
+max_pdf_pages = 1000
+parser_timeout_seconds = 30
+csv_delimiter = "auto"

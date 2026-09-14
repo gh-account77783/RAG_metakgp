@@ -29,6 +29,34 @@ class DocumentEncodingError(GraphMindError):
     code = "document_encoding_error"
 
 
+class DocumentParseError(GraphMindError):
+    code = "document_parse_error"
+
+
+class EncryptedDocumentError(DocumentParseError):
+    code = "encrypted_document"
+
+
+class OcrRequiredError(DocumentParseError):
+    code = "ocr_required"
+
+
+class ParserLimitError(DocumentParseError):
+    code = "parser_limit"
+
+
+class ParserTimeoutError(DocumentParseError):
+    code = "parser_timeout"
+
+
+class DocumentNotFoundError(GraphMindError):
+    code = "document_not_found"
+
+
+class DocumentBusyError(GraphMindError):
+    code = "document_busy"
+
+
 class MigrationError(GraphMindError):
     code = "migration_error"
 

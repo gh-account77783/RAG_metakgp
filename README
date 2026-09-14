@@ -1,10 +1,10 @@
 # GraphMind
 
-GraphMind is being generalized into a self-hosted document RAG service backed by Chroma and a Neo4j document graph. The installable `graphmind` package currently provides the P1/P2 local milestone: durable SQLite metadata and jobs, validated configuration, host-local UTF-8 TXT import, staged dual-store publication, bounded graph retrieval, and verified citations.
+GraphMind is being generalized into a self-hosted document RAG service backed by Chroma and a Neo4j document graph. The installable `graphmind` package currently provides the P1-P3 local foundation: durable SQLite metadata and jobs, validated configuration, isolated PDF/DOCX/TXT/Markdown/CSV extraction, staged dual-store publication, immutable replacement versions, tombstone-first deletion, bounded graph retrieval, and verified citations.
 
 The original MetaKGP crawler and reasoning code remains in the repository as a legacy test prototype. It is not part of the generic package path and is not intended for the final user distribution.
 
-## Generic TXT milestone
+## Generic document ingestion milestone
 
 Python 3.13, a running Neo4j instance, and the values in `.env.example` are the current tested baseline. Copy `graphmind.example.toml` to a private host configuration and adjust its data and import paths, then run:
 
@@ -13,11 +13,30 @@ python -m pip install .
 graphmind --config graphmind.example.toml init
 graphmind --config graphmind.example.toml doctor
 graphmind --config graphmind.example.toml import .\document.txt
+graphmind --config graphmind.example.toml import .\manual.pdf
+graphmind --config graphmind.example.toml reindex .\document.txt
 graphmind --config graphmind.example.toml status
 graphmind --config graphmind.example.toml query "What does the document say?"
+graphmind --config graphmind.example.toml delete <document-id>
 ```
 
-The P2 hash embedding is deterministic and requires no model download; it is an integration baseline rather than the final semantic embedding selected in P4. The public reader UI, authenticated remote MCP service, non-TXT formats, and release installers belong to later phases.
+Text extraction runs in a time-limited subprocess. PDF OCR and password-protected files are rejected explicitly; DOCX macros, embedded objects, and external relationships are never processed; Markdown HTML and CSV formulas remain inert text. Import roots, source size, extracted text, archive expansion, archive entries, PDF pages, parser time, queue size, and chunk size are configurable host limits.
+
+Deletion removes a document from the active manifest before its durable cleanup job touches Chroma, Neo4j, or private originals. A failed cleanup remains retryable with `graphmind retry <job-id>`. Reindexing creates a new immutable version when parser, chunker, embedding configuration, or document content changes, and the previous version remains active until both retrieval stores verify the replacement.
+
+The deterministic hash embedding remains an integration baseline rather than the final semantic embedding selected in P4. The public reader UI, authenticated remote MCP service, and release installers belong to later phases.
+
+## Ubuntu 24.04 EC2 validation
+
+`test-deploy.sh` is the P1-P3 test harness for a clean Ubuntu Server 24.04 EC2 checkout. It installs test prerequisites, starts pinned Neo4j on localhost, builds and inspects the package, tests the installed wheel, runs the real five-format Chroma/Neo4j procedure, and exercises the CLI lifecycle with isolated generated data.
+
+Run it as the normal SSH user from a clean checkout of the exact candidate commit:
+
+```bash
+bash test-deploy.sh
+```
+
+It does not deploy the legacy web server, expose a public port, change AWS security groups, or validate Google/OIDC, MCP authorization, local inference, load, or backup/restore. Test state, generated credentials, logs, and artifacts stay under `~/.local/state/graphmind-test-deploy`, outside the repository. Add a hosted-model key to the private environment file reported by the first run, then use `bash test-deploy.sh --with-hosted-model` to include the optional hosted-provider contract.
 
 ## Runtime contract
 

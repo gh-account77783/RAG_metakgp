@@ -1,4 +1,4 @@
-"""Host-local CLI for the P1/P2 application slice."""
+"""Host-local CLI for document import, reindexing, deletion, and queries."""
 
 from __future__ import annotations
 
@@ -31,9 +31,32 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("config", help="Print redacted effective configuration")
     subcommands.add_parser("doctor", help="Check real storage dependencies")
 
-    import_parser = subcommands.add_parser("import", help="Import one UTF-8 TXT document")
+    import_parser = subcommands.add_parser(
+        "import", help="Import one PDF, DOCX, TXT, Markdown, or CSV document"
+    )
     import_parser.add_argument("path", type=Path)
     import_parser.add_argument("--enqueue-only", action="store_true")
+    import_parser.add_argument(
+        "--csv-delimiter", choices=("auto", "comma", "semicolon", "tab", "pipe")
+    )
+
+    reindex_parser = subcommands.add_parser(
+        "reindex", help="Create and publish a version for the current parser/index configuration"
+    )
+    reindex_parser.add_argument("path", type=Path)
+    reindex_parser.add_argument("--enqueue-only", action="store_true")
+    reindex_parser.add_argument(
+        "--csv-delimiter", choices=("auto", "comma", "semicolon", "tab", "pipe")
+    )
+
+    delete_parser = subcommands.add_parser(
+        "delete", help="Hide a document immediately and queue physical cleanup"
+    )
+    delete_parser.add_argument("document_id")
+    delete_parser.add_argument("--enqueue-only", action="store_true")
+
+    retry_parser = subcommands.add_parser("retry", help="Retry a failed durable job")
+    retry_parser.add_argument("job_id")
 
     subcommands.add_parser("worker-once", help="Run at most one queued ingestion job")
     subcommands.add_parser("status", help="List documents and durable jobs")
@@ -54,6 +77,8 @@ def _settings(args: argparse.Namespace) -> Settings:
         explicit["data_dir"] = args.data_dir
     if args.allow_root:
         explicit["allowed_import_roots"] = tuple(args.allow_root)
+    if getattr(args, "csv_delimiter", None):
+        explicit["csv_delimiter"] = args.csv_delimiter
     return Settings.load(
         config_path=args.config,
         dotenv_path=args.dotenv,
@@ -81,6 +106,7 @@ def _status(app: GraphMindApplication) -> dict[str, object]:
                 "version_id": item.version_id,
                 "status": item.status.value,
                 "attempt_count": item.attempt_count,
+                "progress": item.progress,
                 "error_code": item.error_code,
             }
             for item in app.metadata.list_jobs()
@@ -105,13 +131,31 @@ def main(argv: list[str] | None = None) -> None:
                 print(json.dumps(statuses, indent=2))
                 if not all(item["available"] for item in statuses):
                     raise SystemExit(2)
-            elif args.command == "import":
-                submission = app.ingestion.prepare_txt_import(args.path)
+            elif args.command in {"import", "reindex"}:
+                submission = app.ingestion.prepare_import(args.path)
+                if not args.enqueue_only and submission.job.status.value != "succeeded":
+                    if submission.job.status.value == "failed":
+                        app.metadata.retry_job(submission.job.job_id)
+                    app.jobs.run_once()
+                output = _status(app)
+                output["warnings"] = list(submission.warnings)
+                print(json.dumps(output, indent=2))
+            elif args.command == "delete":
+                submission = app.ingestion.prepare_delete(args.document_id)
                 if not args.enqueue_only and submission.job.status.value != "succeeded":
                     if submission.job.status.value == "failed":
                         app.metadata.retry_job(submission.job.job_id)
                     app.jobs.run_once()
                 print(json.dumps(_status(app), indent=2))
+            elif args.command == "retry":
+                app.metadata.retry_job(args.job_id)
+                job = app.metadata.job(args.job_id)
+                print(
+                    json.dumps(
+                        {"job_id": args.job_id, "status": job.status.value if job else None},
+                        indent=2,
+                    )
+                )
             elif args.command == "worker-once":
                 app.jobs.reconcile()
                 job = app.jobs.run_once()

@@ -12,11 +12,14 @@ from typing import Iterator, Sequence
 
 from .domain import Chunk, Document, Job, JobStatus, Version, VersionStatus
 from .errors import (
+    DocumentBusyError,
+    DocumentNotFoundError,
     JobQueueFullError,
     ManifestUnavailableError,
     MigrationBusyError,
     MigrationError,
     UnsupportedSchemaError,
+    RetryableQueryError,
 )
 
 
@@ -197,8 +200,24 @@ class MetadataStore:
             )
             return value
 
-    def put_document(self, document: Document) -> None:
+    def put_document(self, document: Document, *, allow_restore: bool = False) -> Document:
         with self.transaction() as connection:
+            current = connection.execute(
+                "SELECT * FROM documents WHERE document_id = ?", (document.document_id,)
+            ).fetchone()
+            if current is not None and current["deleted_at"] is not None and allow_restore:
+                cleanup = connection.execute(
+                    """
+                    SELECT status FROM jobs
+                    WHERE operation = 'delete_document' AND document_id = ?
+                    ORDER BY created_at DESC, job_id DESC LIMIT 1
+                    """,
+                    (document.document_id,),
+                ).fetchone()
+                if cleanup is None or cleanup["status"] != JobStatus.SUCCEEDED.value:
+                    raise DocumentBusyError(
+                        "Document deletion cleanup must succeed before it can be imported again"
+                    )
             connection.execute(
                 """
                 INSERT INTO documents(
@@ -209,7 +228,7 @@ class MetadataStore:
                     display_name = excluded.display_name,
                     normalized_name = excluded.normalized_name,
                     media_type = excluded.media_type,
-                    deleted_at = NULL
+                    deleted_at = CASE WHEN ? = 1 THEN NULL ELSE documents.deleted_at END
                 """,
                 (
                     document.document_id,
@@ -221,8 +240,13 @@ class MetadataStore:
                     document.created_at,
                     document.active_version_id,
                     document.deleted_at,
+                    1 if allow_restore else 0,
                 ),
             )
+            stored = connection.execute(
+                "SELECT * FROM documents WHERE document_id = ?", (document.document_id,)
+            ).fetchone()
+        return self._document(stored)
 
     def document_by_source_key(self, source_key: str) -> Document | None:
         with self.connection() as connection:
@@ -332,11 +356,17 @@ class MetadataStore:
     def publish_version(self, version_id: str) -> None:
         with self.transaction() as connection:
             row = connection.execute(
-                "SELECT document_id, expected_chunk_count FROM versions WHERE version_id = ?",
+                """
+                SELECT v.document_id, v.expected_chunk_count, d.deleted_at
+                FROM versions v JOIN documents d ON d.document_id = v.document_id
+                WHERE v.version_id = ?
+                """,
                 (version_id,),
             ).fetchone()
             if row is None:
                 raise ManifestUnavailableError("Cannot publish an unknown version")
+            if row["deleted_at"] is not None:
+                raise ManifestUnavailableError("Cannot publish a tombstoned document")
             actual = int(
                 connection.execute(
                     "SELECT COUNT(*) FROM chunks WHERE version_id = ?", (version_id,)
@@ -464,18 +494,131 @@ class MetadataStore:
             ).fetchone()
         return self._job(row)
 
-    def retry_job(self, job_id: str) -> None:
+    def tombstone_and_put_job(
+        self,
+        document_id: str,
+        expected_active_version_id: str | None,
+        job: Job,
+        *,
+        max_queued_jobs: int,
+    ) -> tuple[Document, Job]:
         now = utc_now()
         with self.transaction() as connection:
+            document_row = connection.execute(
+                "SELECT * FROM documents WHERE document_id = ?", (document_id,)
+            ).fetchone()
+            if document_row is None:
+                raise DocumentNotFoundError("Document does not exist")
+            if document_row["deleted_at"] is not None:
+                existing = connection.execute(
+                    """
+                    SELECT * FROM jobs
+                    WHERE operation = 'delete_document' AND document_id = ?
+                    ORDER BY created_at DESC, job_id DESC LIMIT 1
+                    """,
+                    (document_id,),
+                ).fetchone()
+                if existing is None:
+                    raise ManifestUnavailableError(
+                        "Deleted document has no cleanup job"
+                    )
+                return self._document(document_row), self._job(existing)
+            if document_row["active_version_id"] != expected_active_version_id:
+                raise RetryableQueryError("Document version changed while deletion was prepared")
+            existing = connection.execute(
+                "SELECT * FROM jobs WHERE idempotency_key = ?", (job.idempotency_key,)
+            ).fetchone()
+            if existing is not None:
+                connection.execute(
+                    "UPDATE documents SET active_version_id = NULL, deleted_at = ? WHERE document_id = ?",
+                    (now, document_id),
+                )
+                updated_document = connection.execute(
+                    "SELECT * FROM documents WHERE document_id = ?", (document_id,)
+                ).fetchone()
+                return self._document(updated_document), self._job(existing)
             connection.execute(
                 """
+                UPDATE jobs SET status = 'failed', error_code = 'superseded_by_delete',
+                    lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = NULL,
+                    updated_at = ?
+                WHERE document_id = ? AND operation IN ('import_txt', 'import_document')
+                  AND status = 'queued'
+                """,
+                (now, document_id),
+            )
+            queued = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE status IN ('queued', 'running')"
+                ).fetchone()[0]
+            )
+            if queued >= max_queued_jobs:
+                raise JobQueueFullError(
+                    f"Ingestion queue limit of {max_queued_jobs} has been reached"
+                )
+            connection.execute(
+                "UPDATE documents SET active_version_id = NULL, deleted_at = ? WHERE document_id = ?",
+                (now, document_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO jobs(
+                    job_id, idempotency_key, operation, document_id, version_id, status,
+                    attempt_count, available_at, lease_owner, lease_expires_at, heartbeat_at,
+                    progress, error_code, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    job.job_id,
+                    job.idempotency_key,
+                    job.operation,
+                    job.document_id,
+                    job.version_id,
+                    job.status.value,
+                    job.attempt_count,
+                    job.available_at,
+                    job.lease_owner,
+                    job.lease_expires_at,
+                    job.heartbeat_at,
+                    job.progress,
+                    job.error_code,
+                    now,
+                    now,
+                ),
+            )
+            updated_document = connection.execute(
+                "SELECT * FROM documents WHERE document_id = ?", (document_id,)
+            ).fetchone()
+            stored_job = connection.execute(
+                "SELECT * FROM jobs WHERE job_id = ?", (job.job_id,)
+            ).fetchone()
+        return self._document(updated_document), self._job(stored_job)
+
+    def retry_job(self, job_id: str, *, include_succeeded: bool = False) -> None:
+        now = utc_now()
+        eligible = "('failed', 'succeeded')" if include_succeeded else "('failed')"
+        with self.transaction() as connection:
+            connection.execute(
+                f"""
                 UPDATE jobs SET status = 'queued', available_at = ?, lease_owner = NULL,
                     lease_expires_at = NULL, heartbeat_at = NULL, error_code = NULL,
-                    updated_at = ?
-                WHERE job_id = ? AND status = 'failed'
+                    progress = 0, updated_at = ?
+                WHERE job_id = ? AND status IN {eligible}
                 """,
                 (now, now, job_id),
             )
+
+    def update_job_progress(self, job_id: str, owner: str, progress: int) -> bool:
+        bounded = max(0, min(99, int(progress)))
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE jobs SET progress = ?, updated_at = ?
+                WHERE job_id = ? AND status = 'running' AND lease_owner = ?
+                """,
+                (bounded, utc_now(), job_id, owner),
+            )
+            return cursor.rowcount == 1
 
     def acquire_writer(self, owner: str, lease_seconds: int) -> bool:
         now = utc_now()
@@ -549,13 +692,15 @@ class MetadataStore:
         with self.transaction() as connection:
             connection.execute(
                 """
-                UPDATE jobs SET status = ?, progress = ?, error_code = ?, lease_owner = NULL,
+                UPDATE jobs SET status = ?,
+                    progress = CASE WHEN ? = 1 THEN 100 ELSE progress END,
+                    error_code = ?, lease_owner = NULL,
                     lease_expires_at = NULL, heartbeat_at = NULL, updated_at = ?
                 WHERE job_id = ? AND status = 'running' AND lease_owner = ?
                 """,
                 (
                     JobStatus.SUCCEEDED.value if succeeded else JobStatus.FAILED.value,
-                    100 if succeeded else 0,
+                    1 if succeeded else 0,
                     error_code,
                     utc_now(),
                     job_id,

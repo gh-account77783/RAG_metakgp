@@ -9,6 +9,7 @@ from .files import FileStore, PrivateFileStore
 from .ingestion import IngestionService
 from .jobs import DurableJobExecutor
 from .metadata import MetadataStore
+from .parsing import IsolatedExtractor
 from .providers import AnswerProvider, OllamaProvider
 from .retrieval import AnswerService, RetrievalService
 from .storage import ChromaVectorStore, GraphStore, Neo4jGraphStore, VectorStore
@@ -24,6 +25,7 @@ class GraphMindApplication:
         provider: AnswerProvider | None = None,
         metadata: MetadataStore | None = None,
         files: FileStore | None = None,
+        extractor: IsolatedExtractor | None = None,
         failure_injector=None,
     ) -> None:
         self.settings = settings
@@ -33,6 +35,8 @@ class GraphMindApplication:
         self.installation_id = self.metadata.installation_id()
         self.embedding = HashEmbedding(settings.embedding_dimension)
         self.files = files or PrivateFileStore(settings.data_dir, settings.files_dir)
+        self.extractor = extractor or IsolatedExtractor(settings)
+        self.extractor.cleanup_abandoned()
         self.vector = vector or ChromaVectorStore(
             str(settings.chroma_dir), settings.collection_name, self.embedding
         )
@@ -50,6 +54,7 @@ class GraphMindApplication:
             self.installation_id,
             self.embedding.fingerprint,
             self.files,
+            self.extractor,
             failure_injector=failure_injector,
         )
         self.jobs = DurableJobExecutor(

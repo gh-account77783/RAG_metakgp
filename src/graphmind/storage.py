@@ -16,6 +16,7 @@ class VectorStore(Protocol):
     def count_version(self, installation_id: str, version_id: str) -> int: ...
     def chunk_ids_for_version(self, installation_id: str, version_id: str) -> set[str]: ...
     def search(self, installation_id: str, query: str, limit: int) -> list[SearchHit]: ...
+    def delete_document(self, installation_id: str, document_id: str) -> None: ...
     def close(self) -> None: ...
 
 
@@ -31,13 +32,14 @@ class GraphStore(Protocol):
     def count_version(self, installation_id: str, version_id: str) -> int: ...
     def chunk_ids_for_version(self, installation_id: str, version_id: str) -> set[str]: ...
     def expand(self, installation_id: str, seed_chunk_ids: Sequence[str], limit: int) -> list[str]: ...
+    def delete_document(self, installation_id: str, document_id: str) -> None: ...
     def close(self) -> None: ...
 
 
 class MemoryVectorStore:
     def __init__(self, embedding: HashEmbedding) -> None:
         self.embedding = embedding
-        self._items: dict[tuple[str, str], tuple[str, list[float], str]] = {}
+        self._items: dict[tuple[str, str], tuple[str, str, list[float], str]] = {}
 
     def readiness(self) -> AdapterStatus:
         return AdapterStatus("memory-vector", True, "ready")
@@ -46,6 +48,7 @@ class MemoryVectorStore:
         for chunk in chunks:
             self._items[(installation_id, chunk.chunk_id)] = (
                 chunk.version_id,
+                chunk.document_id,
                 self.embedding.embed(chunk.text),
                 chunk.text,
             )
@@ -53,14 +56,14 @@ class MemoryVectorStore:
     def count_version(self, installation_id: str, version_id: str) -> int:
         return sum(
             1
-            for (item_installation, _), (item_version, _, _) in self._items.items()
+            for (item_installation, _), (item_version, _, _, _) in self._items.items()
             if item_installation == installation_id and item_version == version_id
         )
 
     def chunk_ids_for_version(self, installation_id: str, version_id: str) -> set[str]:
         return {
             chunk_id
-            for (item_installation, chunk_id), (item_version, _, _) in self._items.items()
+            for (item_installation, chunk_id), (item_version, _, _, _) in self._items.items()
             if item_installation == installation_id and item_version == version_id
         }
 
@@ -68,10 +71,15 @@ class MemoryVectorStore:
         query_vector = self.embedding.embed(query)
         hits = [
             SearchHit(chunk_id=chunk_id, score=cosine_similarity(query_vector, vector))
-            for (item_installation, chunk_id), (_, vector, _) in self._items.items()
+            for (item_installation, chunk_id), (_, _, vector, _) in self._items.items()
             if item_installation == installation_id
         ]
         return sorted(hits, key=lambda item: (-item.score, item.chunk_id))[:limit]
+
+    def delete_document(self, installation_id: str, document_id: str) -> None:
+        for key, (_, item_document, _, _) in list(self._items.items()):
+            if key[0] == installation_id and item_document == document_id:
+                del self._items[key]
 
     def close(self) -> None:
         return None
@@ -127,6 +135,12 @@ class MemoryGraphStore:
             if item_installation == installation_id and chunk.document_id in target_documents
         )
         return result[:limit]
+
+    def delete_document(self, installation_id: str, document_id: str) -> None:
+        self._documents.pop((installation_id, document_id), None)
+        for key, chunk in list(self._chunks.items()):
+            if key[0] == installation_id and chunk.document_id == document_id:
+                del self._chunks[key]
 
     def close(self) -> None:
         return None
@@ -236,6 +250,19 @@ class ChromaVectorStore:
             ]
         except Exception as exc:
             raise DependencyUnavailableError("Chroma query failed") from exc
+
+    def delete_document(self, installation_id: str, document_id: str) -> None:
+        try:
+            self._get_collection().delete(
+                where={
+                    "$and": [
+                        {"installation_id": {"$eq": installation_id}},
+                        {"document_id": {"$eq": document_id}},
+                    ]
+                }
+            )
+        except Exception as exc:
+            raise DependencyUnavailableError("Chroma document cleanup failed") from exc
 
     def delete_installation(self, installation_id: str) -> None:
         try:
@@ -414,6 +441,23 @@ class Neo4jGraphStore:
             return [str(record["chunk_id"]) for record in records]
         except Exception as exc:
             raise DependencyUnavailableError("Neo4j graph expansion failed") from exc
+
+    def delete_document(self, installation_id: str, document_id: str) -> None:
+        try:
+            self._get_driver().execute_query(
+                """
+                MATCH (node)
+                WHERE (node:GraphMindDocument OR node:GraphMindVersion OR node:GraphMindChunk)
+                  AND node.installation_id = $installation_id
+                  AND node.document_id = $document_id
+                DETACH DELETE node
+                """,
+                installation_id=installation_id,
+                document_id=document_id,
+                database_=self.database,
+            )
+        except Exception as exc:
+            raise DependencyUnavailableError("Neo4j document cleanup failed") from exc
 
     def delete_installation(self, installation_id: str) -> None:
         try:

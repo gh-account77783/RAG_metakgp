@@ -24,6 +24,12 @@ _ENV_KEYS = {
     "GRAPHMIND_EMBEDDING_DIMENSION": "embedding_dimension",
     "GRAPHMIND_JOB_LEASE_SECONDS": "job_lease_seconds",
     "GRAPHMIND_MAX_QUEUED_JOBS": "max_queued_jobs",
+    "GRAPHMIND_MAX_EXTRACTED_CHARS": "max_extracted_chars",
+    "GRAPHMIND_MAX_ARCHIVE_ENTRIES": "max_archive_entries",
+    "GRAPHMIND_MAX_ARCHIVE_UNCOMPRESSED_BYTES": "max_archive_uncompressed_bytes",
+    "GRAPHMIND_MAX_PDF_PAGES": "max_pdf_pages",
+    "GRAPHMIND_PARSER_TIMEOUT_SECONDS": "parser_timeout_seconds",
+    "GRAPHMIND_CSV_DELIMITER": "csv_delimiter",
     "NEO4J_URI": "neo4j_uri",
     "NEO4J_USERNAME": "neo4j_username",
     "NEO4J_PASSWORD": "neo4j_password",
@@ -99,6 +105,12 @@ class Settings:
     embedding_dimension: int = 384
     job_lease_seconds: int = 60
     max_queued_jobs: int = 100
+    max_extracted_chars: int = 10_000_000
+    max_archive_entries: int = 2048
+    max_archive_uncompressed_bytes: int = 100 * 1024 * 1024
+    max_pdf_pages: int = 1000
+    parser_timeout_seconds: int = 30
+    csv_delimiter: str = "auto"
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_username: str = "neo4j"
     neo4j_password: str = field(default="", repr=False)
@@ -165,6 +177,12 @@ class Settings:
             "embedding_dimension": 384,
             "job_lease_seconds": 60,
             "max_queued_jobs": 100,
+            "max_extracted_chars": 10_000_000,
+            "max_archive_entries": 2048,
+            "max_archive_uncompressed_bytes": 100 * 1024 * 1024,
+            "max_pdf_pages": 1000,
+            "parser_timeout_seconds": 30,
+            "csv_delimiter": "auto",
             "neo4j_uri": "bolt://localhost:7687",
             "neo4j_username": "neo4j",
             "neo4j_password": "",
@@ -197,6 +215,11 @@ class Settings:
             "embedding_dimension",
             "job_lease_seconds",
             "max_queued_jobs",
+            "max_extracted_chars",
+            "max_archive_entries",
+            "max_archive_uncompressed_bytes",
+            "max_pdf_pages",
+            "parser_timeout_seconds",
         ):
             try:
                 values[key] = int(values[key])
@@ -223,6 +246,20 @@ class Settings:
             raise ConfigurationError("job_lease_seconds must be at least 5")
         if self.max_queued_jobs < 1:
             raise ConfigurationError("max_queued_jobs must be at least 1")
+        if self.max_extracted_chars < 1:
+            raise ConfigurationError("max_extracted_chars must be at least 1")
+        if self.max_archive_entries < 1:
+            raise ConfigurationError("max_archive_entries must be at least 1")
+        if self.max_archive_uncompressed_bytes < 1:
+            raise ConfigurationError("max_archive_uncompressed_bytes must be at least 1")
+        if self.max_pdf_pages < 1:
+            raise ConfigurationError("max_pdf_pages must be at least 1")
+        if self.parser_timeout_seconds < 1:
+            raise ConfigurationError("parser_timeout_seconds must be at least 1")
+        if self.csv_delimiter not in {"auto", "comma", "semicolon", "tab", "pipe"}:
+            raise ConfigurationError(
+                "csv_delimiter must be auto, comma, semicolon, tab, or pipe"
+            )
         scheme = urlparse(self.neo4j_uri).scheme
         if scheme not in {"bolt", "bolt+s", "bolt+ssc", "neo4j", "neo4j+s", "neo4j+ssc"}:
             raise ConfigurationError("NEO4J_URI must use a Neo4j or Bolt scheme")
@@ -272,6 +309,12 @@ class Settings:
             "embedding_dimension": self.embedding_dimension,
             "job_lease_seconds": self.job_lease_seconds,
             "max_queued_jobs": self.max_queued_jobs,
+            "max_extracted_chars": self.max_extracted_chars,
+            "max_archive_entries": self.max_archive_entries,
+            "max_archive_uncompressed_bytes": self.max_archive_uncompressed_bytes,
+            "max_pdf_pages": self.max_pdf_pages,
+            "parser_timeout_seconds": self.parser_timeout_seconds,
+            "csv_delimiter": self.csv_delimiter,
             "neo4j_uri": self.neo4j_uri,
             "neo4j_username": self.neo4j_username,
             "neo4j_password": "<configured>" if self.neo4j_password else "<missing>",
