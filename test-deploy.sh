@@ -119,7 +119,6 @@ git archive "$GIT_HASH" | tar -xf - -C "$CANDIDATE_ROOT"
 
 if ((SKIP_SYSTEM_PACKAGES == 0)); then
     CURRENT_STEP="installing Ubuntu test prerequisites"
-    sudo -v
     sudo apt-get update
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
         ca-certificates curl docker.io git openssl python3 python3-pip python3-venv
