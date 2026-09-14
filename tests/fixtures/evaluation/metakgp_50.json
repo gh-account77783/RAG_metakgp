@@ -1,0 +1,1206 @@
+{
+  "schema_version": 1,
+  "dataset_id": "metakgp-50-v1",
+  "frozen_on": "2026-09-14",
+  "source": {
+    "path": "Crawler/cleaned_wiki.jsonl",
+    "sha256": "814139b42f6ad0dcab397fd0806f946ba7f2f32908ac04dfb4ee7cc72bc71fbd",
+    "document_count": 3585,
+    "snapshot_note": "Questions and reference evidence are frozen against the checked-in development snapshot; they are not claims about current IIT Kharagpur state."
+  },
+  "category_counts": {
+    "direct": 30,
+    "graph": 10,
+    "multi_document": 5,
+    "abstain": 5
+  },
+  "scoring_contract": {
+    "answer_cases": "Required terms must be present semantically and every factual claim must be supported by eligible cited evidence.",
+    "abstain_cases": "The system must abstain and must not invent a current, private, sensor, attendance, or future fact.",
+    "retrieval_metrics": [
+      "source_url_recall_at_k",
+      "graph_target_recall_at_k"
+    ],
+    "answer_metrics": [
+      "required_term_accuracy",
+      "citation_support_rate",
+      "abstention_accuracy"
+    ]
+  },
+  "materialization_note": "P4 must convert only referenced snapshot pages to allowed Markdown files and append explicit [[filename.md]] references for recorded graph edges; JSONL remains unsupported product input.",
+  "cases": [
+    {
+      "id": "GMQ001",
+      "category": "direct",
+      "subtype": "course_credits",
+      "question": "How many credits is MA40009 Number Theory worth?",
+      "expected_outcome": "answer",
+      "reference_answer": "MA40009 Number Theory is worth 4 credits.",
+      "required_answer_terms": [
+        "4 credits"
+      ],
+      "evidence": [
+        {
+          "title": "MA40009: Number Theory",
+          "url": "https://wiki.metakgp.org/w/MA40009:_Number_Theory",
+          "supporting_text": [
+            "Course name: Number Theory",
+            "Credits: 4"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ002",
+      "category": "direct",
+      "subtype": "course_semester",
+      "question": "In which semester is HS50023 Economics of CPR Management offered?",
+      "expected_outcome": "answer",
+      "reference_answer": "It is offered in the Spring semester.",
+      "required_answer_terms": [
+        "Spring"
+      ],
+      "evidence": [
+        {
+          "title": "HS50023: Economics Of Cpr Management",
+          "url": "https://wiki.metakgp.org/w/HS50023:_Economics_Of_Cpr_Management",
+          "supporting_text": [
+            "Course name: Economics Of Cpr Management",
+            "Semester: Spring"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ003",
+      "category": "direct",
+      "subtype": "course_ltp",
+      "question": "What is the L-T-P structure of MA61027 Cryptography and Network Security?",
+      "expected_outcome": "answer",
+      "reference_answer": "Its L-T-P structure is 3-1-0.",
+      "required_answer_terms": [
+        "3-1-0"
+      ],
+      "evidence": [
+        {
+          "title": "MA61027: Cryptography And Network Security",
+          "url": "https://wiki.metakgp.org/w/MA61027:_Cryptography_And_Network_Security",
+          "supporting_text": [
+            "Course name: Cryptography And Network Security",
+            "L-T-P: 3-1-0"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ004",
+      "category": "direct",
+      "subtype": "course_department",
+      "question": "Which department offers CH20001 Fluid Mechanics?",
+      "expected_outcome": "answer",
+      "reference_answer": "Chemical Engineering offers CH20001 Fluid Mechanics.",
+      "required_answer_terms": [
+        "Chemical Engineering"
+      ],
+      "evidence": [
+        {
+          "title": "CH20001: Fluid Mechanics",
+          "url": "https://wiki.metakgp.org/w/CH20001:_Fluid_Mechanics",
+          "supporting_text": [
+            "Course name: Fluid Mechanics",
+            "Offered by: Chemical Engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ005",
+      "category": "direct",
+      "subtype": "course_semester",
+      "question": "Is CS40026 Computational Geometry listed for Spring or Autumn?",
+      "expected_outcome": "answer",
+      "reference_answer": "CS40026 Computational Geometry is listed for Spring.",
+      "required_answer_terms": [
+        "Spring"
+      ],
+      "evidence": [
+        {
+          "title": "CS40026: Computational Geometry",
+          "url": "https://wiki.metakgp.org/w/CS40026:_Computational_Geometry",
+          "supporting_text": [
+            "Course name: Computational Geometry",
+            "Semester: Spring"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ006",
+      "category": "direct",
+      "subtype": "course_credits",
+      "question": "How many credits does EE19001 Electrical Technology Laboratory carry?",
+      "expected_outcome": "answer",
+      "reference_answer": "EE19001 carries 2 credits.",
+      "required_answer_terms": [
+        "2 credits"
+      ],
+      "evidence": [
+        {
+          "title": "EE19001: Electrical Technology Lab",
+          "url": "https://wiki.metakgp.org/w/EE19001:_Electrical_Technology_Lab",
+          "supporting_text": [
+            "Course name: Electrical Technology Laboratory",
+            "Credits: 2"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ007",
+      "category": "direct",
+      "subtype": "course_ltp",
+      "question": "What is the L-T-P structure for CS31702 Computer Architecture and Operating System?",
+      "expected_outcome": "answer",
+      "reference_answer": "The L-T-P structure is 4-0-0.",
+      "required_answer_terms": [
+        "4-0-0"
+      ],
+      "evidence": [
+        {
+          "title": "CS31702: Computer Architecture And Operating System",
+          "url": "https://wiki.metakgp.org/w/CS31702:_Computer_Architecture_And_Operating_System",
+          "supporting_text": [
+            "Course name: Computer Architecture And Operating System",
+            "L-T-P: 4-0-0"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ008",
+      "category": "direct",
+      "subtype": "course_department",
+      "question": "Which school offers ES60004 Energy Materials?",
+      "expected_outcome": "answer",
+      "reference_answer": "The School of Energy Science & Engineering offers ES60004.",
+      "required_answer_terms": [
+        "School of Energy Science & Engineering"
+      ],
+      "evidence": [
+        {
+          "title": "ES60004: Energy Materials",
+          "url": "https://wiki.metakgp.org/w/ES60004:_Energy_Materials",
+          "supporting_text": [
+            "Course name: Energy Materials",
+            "Offered by: [School of Energy Science & Engineering]\")"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ009",
+      "category": "direct",
+      "subtype": "course_ltp",
+      "question": "What is the L-T-P structure of EP60027 Institutional Aspects of Entrepreneurship?",
+      "expected_outcome": "answer",
+      "reference_answer": "Its L-T-P structure is 2-0-1.",
+      "required_answer_terms": [
+        "2-0-1"
+      ],
+      "evidence": [
+        {
+          "title": "EP60027: Institutional Aspects Of Entrepreneurship",
+          "url": "https://wiki.metakgp.org/w/EP60027:_Institutional_Aspects_Of_Entrepreneurship",
+          "supporting_text": [
+            "Course name: Institutional Aspects Of Entrepreneurship",
+            "L-T-P: 2-0-1"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ010",
+      "category": "direct",
+      "subtype": "course_department",
+      "question": "Which department offers AE51004 Aircraft Fuel System?",
+      "expected_outcome": "answer",
+      "reference_answer": "Aerospace Engineering offers AE51004 Aircraft Fuel System.",
+      "required_answer_terms": [
+        "Aerospace Engineering"
+      ],
+      "evidence": [
+        {
+          "title": "AE51004: Aircraft Fuel System",
+          "url": "https://wiki.metakgp.org/w/AE51004:_Aircraft_Fuel_System",
+          "supporting_text": [
+            "Course name: Aircraft Fuel System",
+            "Offered by: Aerospace Engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ011",
+      "category": "direct",
+      "subtype": "course_credits",
+      "question": "How many credits is BT41016 Food Biotechnology worth?",
+      "expected_outcome": "answer",
+      "reference_answer": "BT41016 Food Biotechnology is worth 3 credits.",
+      "required_answer_terms": [
+        "3 credits"
+      ],
+      "evidence": [
+        {
+          "title": "BT41016: Food Biotechnology",
+          "url": "https://wiki.metakgp.org/w/BT41016:_Food_Biotechnology",
+          "supporting_text": [
+            "Course name: Food Biotechnology",
+            "Credits: 3"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ012",
+      "category": "direct",
+      "subtype": "course_semester",
+      "question": "In which semester is AG60023 Dairy and Food Processing Operations-I listed?",
+      "expected_outcome": "answer",
+      "reference_answer": "It is listed for the Autumn semester.",
+      "required_answer_terms": [
+        "Autumn"
+      ],
+      "evidence": [
+        {
+          "title": "AG60023: Dairy And Food Processing Operations- I",
+          "url": "https://wiki.metakgp.org/w/AG60023:_Dairy_And_Food_Processing_Operations-_I",
+          "supporting_text": [
+            "Course name: Dairy And Food Processing Operations- I",
+            "Semester: Autumn"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ013",
+      "category": "direct",
+      "subtype": "course_credits",
+      "question": "How many credits does CH62015 Advanced Thermodynamics carry?",
+      "expected_outcome": "answer",
+      "reference_answer": "CH62015 carries 4 credits.",
+      "required_answer_terms": [
+        "4 credits"
+      ],
+      "evidence": [
+        {
+          "title": "CH62015: Advanced Thermodynamics",
+          "url": "https://wiki.metakgp.org/w/CH62015:_Advanced_Thermodynamics",
+          "supporting_text": [
+            "Course name: Advanced Thermodynamics",
+            "Credits: 4"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ014",
+      "category": "direct",
+      "subtype": "course_ltp",
+      "question": "What is the L-T-P structure for EC60064 Biomedical System Engineering and Automation?",
+      "expected_outcome": "answer",
+      "reference_answer": "Its L-T-P structure is 3-1-0.",
+      "required_answer_terms": [
+        "3-1-0"
+      ],
+      "evidence": [
+        {
+          "title": "EC60064: Biomedical System Engineering And Automation",
+          "url": "https://wiki.metakgp.org/w/EC60064:_Biomedical_System_Engineering_And_Automation",
+          "supporting_text": [
+            "Course name: Biomedical System Engineering And Automation",
+            "L-T-P: 3-1-0"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ015",
+      "category": "direct",
+      "subtype": "course_semester",
+      "question": "In which semester is AR52010 Architectural Conservation offered?",
+      "expected_outcome": "answer",
+      "reference_answer": "AR52010 Architectural Conservation is offered in Spring.",
+      "required_answer_terms": [
+        "Spring"
+      ],
+      "evidence": [
+        {
+          "title": "AR52010: Architectural Conservation",
+          "url": "https://wiki.metakgp.org/w/AR52010:_Architectural_Conservation",
+          "supporting_text": [
+            "Course name: Architectural Conservation",
+            "Semester: Spring"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ016",
+      "category": "direct",
+      "subtype": "faculty_year",
+      "question": "In what year did Aradhna Malik join?",
+      "expected_outcome": "answer",
+      "reference_answer": "Aradhna Malik joined in 2009.",
+      "required_answer_terms": [
+        "2009"
+      ],
+      "evidence": [
+        {
+          "title": "Aradhna Malik",
+          "url": "https://wiki.metakgp.org/w/Aradhna_Malik",
+          "supporting_text": [
+            "Year Joined: 2009"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ017",
+      "category": "direct",
+      "subtype": "faculty_department",
+      "question": "Which department is Haimanti Banerji associated with?",
+      "expected_outcome": "answer",
+      "reference_answer": "Haimanti Banerji is associated with Architecture & Regional Planning.",
+      "required_answer_terms": [
+        "Architecture & Regional Planning"
+      ],
+      "evidence": [
+        {
+          "title": "Haimanti Banerji",
+          "url": "https://wiki.metakgp.org/w/Haimanti_Banerji",
+          "supporting_text": [
+            "Department: Architecture & Regional Planning"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ018",
+      "category": "direct",
+      "subtype": "faculty_year",
+      "question": "In what year did Naba Kumar Peyada join?",
+      "expected_outcome": "answer",
+      "reference_answer": "Naba Kumar Peyada joined in 2013.",
+      "required_answer_terms": [
+        "2013"
+      ],
+      "evidence": [
+        {
+          "title": "Naba Kumar Peyada",
+          "url": "https://wiki.metakgp.org/w/Naba_Kumar_Peyada",
+          "supporting_text": [
+            "Year Joined: 2013"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ019",
+      "category": "direct",
+      "subtype": "faculty_department",
+      "question": "Which department is Abhijit Das associated with?",
+      "expected_outcome": "answer",
+      "reference_answer": "Abhijit Das is associated with Computer Science & Engineering.",
+      "required_answer_terms": [
+        "Computer Science & Engineering"
+      ],
+      "evidence": [
+        {
+          "title": "Abhijit Das",
+          "url": "https://wiki.metakgp.org/w/Abhijit_Das",
+          "supporting_text": [
+            "Department: Computer Science & Engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ020",
+      "category": "direct",
+      "subtype": "faculty_year",
+      "question": "In what year did Basudam Adhikari join?",
+      "expected_outcome": "answer",
+      "reference_answer": "Basudam Adhikari joined in 1981.",
+      "required_answer_terms": [
+        "1981"
+      ],
+      "evidence": [
+        {
+          "title": "Basudam Adhikari",
+          "url": "https://wiki.metakgp.org/w/Basudam_Adhikari",
+          "supporting_text": [
+            "Year Joined: 1981"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ021",
+      "category": "direct",
+      "subtype": "faculty_department",
+      "question": "Which department is Biswajit Samanta associated with?",
+      "expected_outcome": "answer",
+      "reference_answer": "Biswajit Samanta is associated with Mining Engineering.",
+      "required_answer_terms": [
+        "Mining Engineering"
+      ],
+      "evidence": [
+        {
+          "title": "Biswajit Samanta",
+          "url": "https://wiki.metakgp.org/w/Biswajit_Samanta",
+          "supporting_text": [
+            "Department: Mining Engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ022",
+      "category": "direct",
+      "subtype": "faculty_year",
+      "question": "In what year did Karabi Biswas join?",
+      "expected_outcome": "answer",
+      "reference_answer": "Karabi Biswas joined in 2008.",
+      "required_answer_terms": [
+        "2008"
+      ],
+      "evidence": [
+        {
+          "title": "Karabi Biswas",
+          "url": "https://wiki.metakgp.org/w/Karabi_Biswas",
+          "supporting_text": [
+            "Year Joined: 2008"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ023",
+      "category": "direct",
+      "subtype": "faculty_department",
+      "question": "Which department is Debabrata Das associated with?",
+      "expected_outcome": "answer",
+      "reference_answer": "Debabrata Das is associated with Biotechnology.",
+      "required_answer_terms": [
+        "Biotechnology"
+      ],
+      "evidence": [
+        {
+          "title": "Debabrata Das",
+          "url": "https://wiki.metakgp.org/w/Debabrata_Das",
+          "supporting_text": [
+            "Department: Biotechnology"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ024",
+      "category": "direct",
+      "subtype": "faculty_year",
+      "question": "In what year did Sudhindra Nath Panda join?",
+      "expected_outcome": "answer",
+      "reference_answer": "Sudhindra Nath Panda joined in 1995.",
+      "required_answer_terms": [
+        "1995"
+      ],
+      "evidence": [
+        {
+          "title": "Sudhindra Nath Panda",
+          "url": "https://wiki.metakgp.org/w/Sudhindra_Nath_Panda",
+          "supporting_text": [
+            "Year Joined: 1995"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ025",
+      "category": "direct",
+      "subtype": "faculty_department",
+      "question": "Which department is Tanmaya Pathak associated with?",
+      "expected_outcome": "answer",
+      "reference_answer": "Tanmaya Pathak is associated with Chemistry.",
+      "required_answer_terms": [
+        "Chemistry"
+      ],
+      "evidence": [
+        {
+          "title": "Tanmaya Pathak",
+          "url": "https://wiki.metakgp.org/w/Tanmaya_Pathak",
+          "supporting_text": [
+            "Department: Chemistry"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ026",
+      "category": "direct",
+      "subtype": "faculty_year",
+      "question": "In what year did P V S N Murthy join?",
+      "expected_outcome": "answer",
+      "reference_answer": "P V S N Murthy joined in 2002.",
+      "required_answer_terms": [
+        "2002"
+      ],
+      "evidence": [
+        {
+          "title": "P V S N Murthy",
+          "url": "https://wiki.metakgp.org/w/P_V_S_N_Murthy",
+          "supporting_text": [
+            "Year Joined: 2002"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ027",
+      "category": "direct",
+      "subtype": "faculty_department",
+      "question": "Which department is Pralay Mitra associated with?",
+      "expected_outcome": "answer",
+      "reference_answer": "Pralay Mitra is associated with Computer Science & Engineering.",
+      "required_answer_terms": [
+        "Computer Science & Engineering"
+      ],
+      "evidence": [
+        {
+          "title": "Pralay Mitra",
+          "url": "https://wiki.metakgp.org/w/Pralay_Mitra",
+          "supporting_text": [
+            "Department: Computer Science & Engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ028",
+      "category": "direct",
+      "subtype": "faculty_year",
+      "question": "In what year did Susmita Mukhopadhyay join?",
+      "expected_outcome": "answer",
+      "reference_answer": "Susmita Mukhopadhyay joined in 2007.",
+      "required_answer_terms": [
+        "2007"
+      ],
+      "evidence": [
+        {
+          "title": "Susmita Mukhopadhyay",
+          "url": "https://wiki.metakgp.org/w/Susmita_Mukhopadhyay",
+          "supporting_text": [
+            "Year Joined: 2007"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ029",
+      "category": "direct",
+      "subtype": "faculty_department",
+      "question": "Which department is Harikrishnan G associated with?",
+      "expected_outcome": "answer",
+      "reference_answer": "Harikrishnan G is associated with Chemical Engineering.",
+      "required_answer_terms": [
+        "Chemical Engineering"
+      ],
+      "evidence": [
+        {
+          "title": "Harikrishnan G",
+          "url": "https://wiki.metakgp.org/w/Harikrishnan_G",
+          "supporting_text": [
+            "Department: Chemical Engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ030",
+      "category": "direct",
+      "subtype": "faculty_year",
+      "question": "In what year did Prasanta Kumar Datta join?",
+      "expected_outcome": "answer",
+      "reference_answer": "Prasanta Kumar Datta joined in 2000.",
+      "required_answer_terms": [
+        "2000"
+      ],
+      "evidence": [
+        {
+          "title": "Prasanta Kumar Datta",
+          "url": "https://wiki.metakgp.org/w/Prasanta_Kumar_Datta",
+          "supporting_text": [
+            "Year Joined: 2000"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ031",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "The MA61027 page links to its Autumn 2017 instructor. In what year did that instructor join?",
+      "expected_outcome": "answer",
+      "reference_answer": "The linked instructor, Sourav Mukhopadhyay, joined in 2009.",
+      "required_answer_terms": [
+        "Sourav Mukhopadhyay",
+        "2009"
+      ],
+      "evidence": [
+        {
+          "title": "MA61027: Cryptography And Network Security",
+          "url": "https://wiki.metakgp.org/w/MA61027:_Cryptography_And_Network_Security",
+          "supporting_text": [
+            "Taught by [Sourav Mukhopadhyay](/w/Sourav_Mukhopadhyay \"Sourav Mukhopadhyay\")"
+          ]
+        },
+        {
+          "title": "Sourav Mukhopadhyay",
+          "url": "https://wiki.metakgp.org/w/Sourav_Mukhopadhyay",
+          "supporting_text": [
+            "Department: Mathematics",
+            "Year Joined: 2009"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/MA61027:_Cryptography_And_Network_Security",
+          "to_url": "https://wiki.metakgp.org/w/Sourav_Mukhopadhyay"
+        }
+      ]
+    },
+    {
+      "id": "GMQ032",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "The Bioinformatics course page links to its instructor. Which department is that instructor in, and when did he join?",
+      "expected_outcome": "answer",
+      "reference_answer": "The linked instructor, Ranjit Prasad Bahadur, is in Biotechnology and joined in 2009.",
+      "required_answer_terms": [
+        "Biotechnology",
+        "2009"
+      ],
+      "evidence": [
+        {
+          "title": "BT31006: Bioinformatics",
+          "url": "https://wiki.metakgp.org/w/BT31006:_Bioinformatics",
+          "supporting_text": [
+            "**Bioinformatics** is an undergraduate course offered by [Department of Biotechnology](/w/Department_of_Biotechnology \"Department of Biotechnology\") typically in spring semester of third year (6th semester). The course is taken by Dr. [Ranjit Prasad Bahadur](/w/Ranjit_Prasad_Bahadur \"Ranjit Prasad Bahadur\"), the head of computational and structural biology lab of the department."
+          ]
+        },
+        {
+          "title": "Ranjit Prasad Bahadur",
+          "url": "https://wiki.metakgp.org/w/Ranjit_Prasad_Bahadur",
+          "supporting_text": [
+            "Department: Biotechnology",
+            "Year Joined: 2009"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/BT31006:_Bioinformatics",
+          "to_url": "https://wiki.metakgp.org/w/Ranjit_Prasad_Bahadur"
+        }
+      ]
+    },
+    {
+      "id": "GMQ033",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "According to the Operation Research course page, in what year did its listed professor join?",
+      "expected_outcome": "answer",
+      "reference_answer": "Mahendra Prasad Biswal joined in 1988.",
+      "required_answer_terms": [
+        "Mahendra Prasad Biswal",
+        "1988"
+      ],
+      "evidence": [
+        {
+          "title": "MA30014: Operation Research",
+          "url": "https://wiki.metakgp.org/w/MA30014:_Operation_Research",
+          "supporting_text": [
+            "Professor(s): M. P. Biswal [1]"
+          ]
+        },
+        {
+          "title": "Mahendra Prasad Biswal",
+          "url": "https://wiki.metakgp.org/w/Mahendra_Prasad_Biswal",
+          "supporting_text": [
+            "Department: Mathematics",
+            "Year Joined: 1988"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/MA30014:_Operation_Research",
+          "to_url": "https://wiki.metakgp.org/w/Mahendra_Prasad_Biswal"
+        }
+      ]
+    },
+    {
+      "id": "GMQ034",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "The Lubrication and Rotor Dynamics page links to its professor. In what year did that professor join?",
+      "expected_outcome": "answer",
+      "reference_answer": "The linked professor, Mihir Sarangi, joined in 2006.",
+      "required_answer_terms": [
+        "Mihir Sarangi",
+        "2006"
+      ],
+      "evidence": [
+        {
+          "title": "ME60404: Lubrication And Rotor Dynamics",
+          "url": "https://wiki.metakgp.org/w/ME60404:_Lubrication_And_Rotor_Dynamics",
+          "supporting_text": [
+            "Professor(s): Mihir Sarangi [1]"
+          ]
+        },
+        {
+          "title": "Mihir Sarangi",
+          "url": "https://wiki.metakgp.org/w/Mihir_Sarangi",
+          "supporting_text": [
+            "Department: Mechanical Engineering",
+            "Year Joined: 2006"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/ME60404:_Lubrication_And_Rotor_Dynamics",
+          "to_url": "https://wiki.metakgp.org/w/Mihir_Sarangi"
+        }
+      ]
+    },
+    {
+      "id": "GMQ035",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "For Process Dynamics and Control, which linked instructor joined in 2007?",
+      "expected_outcome": "answer",
+      "reference_answer": "Amiya Kumar Jana is the linked instructor who joined in 2007.",
+      "required_answer_terms": [
+        "Amiya Kumar Jana",
+        "2007"
+      ],
+      "evidence": [
+        {
+          "title": "CH61016: Process Dynamics And Control",
+          "url": "https://wiki.metakgp.org/w/CH61016:_Process_Dynamics_And_Control",
+          "supporting_text": [
+            "Professor(s): A.N. Samantal,  A.K. Jana [1]"
+          ]
+        },
+        {
+          "title": "Amiya Kumar Jana",
+          "url": "https://wiki.metakgp.org/w/Amiya_Kumar_Jana",
+          "supporting_text": [
+            "Department: Chemical Engineering",
+            "Year Joined: 2007"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/CH61016:_Process_Dynamics_And_Control",
+          "to_url": "https://wiki.metakgp.org/w/Amiya_Kumar_Jana"
+        }
+      ]
+    },
+    {
+      "id": "GMQ036",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "In what year did the first instructor listed on the Database Management Systems page join?",
+      "expected_outcome": "answer",
+      "reference_answer": "Pabitra Mitra joined in 2005.",
+      "required_answer_terms": [
+        "Pabitra Mitra",
+        "2005"
+      ],
+      "evidence": [
+        {
+          "title": "CS43002: Database Management Systems",
+          "url": "https://wiki.metakgp.org/w/CS43002:_Database_Management_Systems",
+          "supporting_text": [
+            "Taught by Prof. [Pabitra Mitra](/w/Pabitra_Mitra \"Pabitra Mitra\") and Prof. [Partha P Chakrabarti]\")"
+          ]
+        },
+        {
+          "title": "Pabitra Mitra",
+          "url": "https://wiki.metakgp.org/w/Pabitra_Mitra",
+          "supporting_text": [
+            "Department: Computer Science & Engineering",
+            "Year Joined: 2005"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/CS43002:_Database_Management_Systems",
+          "to_url": "https://wiki.metakgp.org/w/Pabitra_Mitra"
+        }
+      ]
+    },
+    {
+      "id": "GMQ037",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "Which department is the instructor linked from the Object Oriented Systems Design Laboratory page associated with?",
+      "expected_outcome": "answer",
+      "reference_answer": "Dharmendra Kumar Gupta is associated with Mathematics.",
+      "required_answer_terms": [
+        "Dharmendra Kumar Gupta",
+        "Mathematics"
+      ],
+      "evidence": [
+        {
+          "title": "MA39011: Object Oriented Systems Design Laboratory",
+          "url": "https://wiki.metakgp.org/w/MA39011:_Object_Oriented_Systems_Design_Laboratory",
+          "supporting_text": [
+            "Taught by [Dharmendra Kumar Gupta](/w/Dharmendra_Kumar_Gupta \"Dharmendra Kumar Gupta\")"
+          ]
+        },
+        {
+          "title": "Dharmendra Kumar Gupta",
+          "url": "https://wiki.metakgp.org/w/Dharmendra_Kumar_Gupta",
+          "supporting_text": [
+            "Department: Mathematics",
+            "Year Joined: 1985"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/MA39011:_Object_Oriented_Systems_Design_Laboratory",
+          "to_url": "https://wiki.metakgp.org/w/Dharmendra_Kumar_Gupta"
+        }
+      ]
+    },
+    {
+      "id": "GMQ038",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "Which instructor linked from the Immunology course page joined in 2013?",
+      "expected_outcome": "answer",
+      "reference_answer": "Agneyo Ganguly is the linked instructor who joined in 2013.",
+      "required_answer_terms": [
+        "Agneyo Ganguly",
+        "2013"
+      ],
+      "evidence": [
+        {
+          "title": "BT31014: Immunology",
+          "url": "https://wiki.metakgp.org/w/BT31014:_Immunology",
+          "supporting_text": [
+            "**Immunology** is an undergraduate level course offered by [Department of Biotechnology](/w/Department_of_Biotechnology \"Department of Biotechnology\") in spring semester of third year (6th semester). It is typically taken by two faculties - Prof. [Sudip Kumar Ghosh](/w/Sudip_Kumar_Ghosh \"Sudip Kumar Ghosh\"), head of Immunotechnology lab and Dr. [Agneyo Ganguly](/w/Agneyo_Ganguly \"Agneyo Ganguly\"). It's a 4 credit course with one slot for tutorial class."
+          ]
+        },
+        {
+          "title": "Agneyo Ganguly",
+          "url": "https://wiki.metakgp.org/w/Agneyo_Ganguly",
+          "supporting_text": [
+            "Department: Biotechnology",
+            "Year Joined: 2013"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/BT31014:_Immunology",
+          "to_url": "https://wiki.metakgp.org/w/Agneyo_Ganguly"
+        }
+      ]
+    },
+    {
+      "id": "GMQ039",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "In what year did the professor linked from the AGV page join?",
+      "expected_outcome": "answer",
+      "reference_answer": "The linked professor, Debashish Chakravarty, joined in 2003.",
+      "required_answer_terms": [
+        "Debashish Chakravarty",
+        "2003"
+      ],
+      "evidence": [
+        {
+          "title": "AGV",
+          "url": "https://wiki.metakgp.org/w/AGV",
+          "supporting_text": [
+            "AGV (Autonomous Ground Vehicle) is a multi-disciplinary research group under [Prof. Debashish Chakravarty](/w/Debashish_Chakravarty \"Debashish Chakravarty\"), Mining department, aiming to build a fully operational self-driving car. It deals with varied projects involving computer vision,deep and reinforcement learning."
+          ]
+        },
+        {
+          "title": "Debashish Chakravarty",
+          "url": "https://wiki.metakgp.org/w/Debashish_Chakravarty",
+          "supporting_text": [
+            "Department: Mining Engineering",
+            "Year Joined: 2003"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/AGV",
+          "to_url": "https://wiki.metakgp.org/w/Debashish_Chakravarty"
+        }
+      ]
+    },
+    {
+      "id": "GMQ040",
+      "category": "graph",
+      "subtype": "linked_document_fact",
+      "question": "Which society is linked under Technical Activities in the Fresher's guide, and name one activity listed on that society's page?",
+      "expected_outcome": "answer",
+      "reference_answer": "Robotics is one activity listed for the Technology Robotix Society.",
+      "required_answer_terms": [
+        "Technology Robotix Society",
+        "Robotics"
+      ],
+      "evidence": [
+        {
+          "title": "Fresher's guide",
+          "url": "https://wiki.metakgp.org/w/Fresher%27s_guide",
+          "supporting_text": [
+            "See also: [List of student run research groups](/w/List_of_student_run_research_groups \"List of student run research groups\") and [Technology Robotix Society § Activities](/w/Technology_Robotix_Society#Activities \"Technology Robotix Society\")"
+          ]
+        },
+        {
+          "title": "Technology Robotix Society",
+          "url": "https://wiki.metakgp.org/w/Technology_Robotix_Society",
+          "supporting_text": [
+            "Activities: Robotics, Robotix(competition) \"wikipedia:Robotix (competition)\"), KRAIG, KRISS, Annual Winter School of AI and Robotics, Robotics Workshops, Makerspace, Line Follower Hackathon"
+          ]
+        }
+      ],
+      "graph_edges": [
+        {
+          "from_url": "https://wiki.metakgp.org/w/Fresher%27s_guide",
+          "to_url": "https://wiki.metakgp.org/w/Technology_Robotix_Society"
+        }
+      ]
+    },
+    {
+      "id": "GMQ041",
+      "category": "multi_document",
+      "subtype": "comparison_or_aggregation",
+      "question": "Which course carries more credits, MA40009 Number Theory or HS50023 Economics of CPR Management, and by how much?",
+      "expected_outcome": "answer",
+      "reference_answer": "MA40009 Number Theory carries more: 4 credits versus 3, a difference of 1 credit.",
+      "required_answer_terms": [
+        "MA40009",
+        "4 credits",
+        "3",
+        "1 credit"
+      ],
+      "evidence": [
+        {
+          "title": "MA40009: Number Theory",
+          "url": "https://wiki.metakgp.org/w/MA40009:_Number_Theory",
+          "supporting_text": [
+            "Course name: Number Theory",
+            "Credits: 4"
+          ]
+        },
+        {
+          "title": "HS50023: Economics Of Cpr Management",
+          "url": "https://wiki.metakgp.org/w/HS50023:_Economics_Of_Cpr_Management",
+          "supporting_text": [
+            "Course name: Economics Of Cpr Management",
+            "Credits: 3"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ042",
+      "category": "multi_document",
+      "subtype": "comparison_or_aggregation",
+      "question": "Who joined earlier, Aradhna Malik or Haimanti Banerji, and in what year?",
+      "expected_outcome": "answer",
+      "reference_answer": "Aradhna Malik joined earlier, in 2009; Haimanti Banerji joined in 2010.",
+      "required_answer_terms": [
+        "Aradhna Malik",
+        "2009",
+        "2010"
+      ],
+      "evidence": [
+        {
+          "title": "Aradhna Malik",
+          "url": "https://wiki.metakgp.org/w/Aradhna_Malik",
+          "supporting_text": [
+            "Year Joined: 2009"
+          ]
+        },
+        {
+          "title": "Haimanti Banerji",
+          "url": "https://wiki.metakgp.org/w/Haimanti_Banerji",
+          "supporting_text": [
+            "Year Joined: 2010"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ043",
+      "category": "multi_document",
+      "subtype": "comparison_or_aggregation",
+      "question": "Which is listed for Autumn and which for Spring: CH20001 Fluid Mechanics and CS40026 Computational Geometry?",
+      "expected_outcome": "answer",
+      "reference_answer": "CH20001 Fluid Mechanics is listed for Autumn, while CS40026 Computational Geometry is listed for Spring.",
+      "required_answer_terms": [
+        "CH20001",
+        "Autumn",
+        "CS40026",
+        "Spring"
+      ],
+      "evidence": [
+        {
+          "title": "CH20001: Fluid Mechanics",
+          "url": "https://wiki.metakgp.org/w/CH20001:_Fluid_Mechanics",
+          "supporting_text": [
+            "Course name: Fluid Mechanics",
+            "Semester: Autumn"
+          ]
+        },
+        {
+          "title": "CS40026: Computational Geometry",
+          "url": "https://wiki.metakgp.org/w/CS40026:_Computational_Geometry",
+          "supporting_text": [
+            "Course name: Computational Geometry",
+            "Semester: Spring"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ044",
+      "category": "multi_document",
+      "subtype": "comparison_or_aggregation",
+      "question": "Which departments are Pralay Mitra and Karabi Biswas associated with?",
+      "expected_outcome": "answer",
+      "reference_answer": "Pralay Mitra is associated with Computer Science & Engineering, while Karabi Biswas is associated with Electrical Engineering.",
+      "required_answer_terms": [
+        "Pralay Mitra",
+        "Computer Science & Engineering",
+        "Karabi Biswas",
+        "Electrical Engineering"
+      ],
+      "evidence": [
+        {
+          "title": "Pralay Mitra",
+          "url": "https://wiki.metakgp.org/w/Pralay_Mitra",
+          "supporting_text": [
+            "Department: Computer Science & Engineering"
+          ]
+        },
+        {
+          "title": "Karabi Biswas",
+          "url": "https://wiki.metakgp.org/w/Karabi_Biswas",
+          "supporting_text": [
+            "Department: Electrical Engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ045",
+      "category": "multi_document",
+      "subtype": "comparison_or_aggregation",
+      "question": "What is the combined credit total of EE19001 Electrical Technology Laboratory and CS43002 Database Management Systems?",
+      "expected_outcome": "answer",
+      "reference_answer": "EE19001 carries 2 credits and CS43002 carries 5 credits, for a combined total of 7 credits.",
+      "required_answer_terms": [
+        "2 credits",
+        "5 credits",
+        "7 credits"
+      ],
+      "evidence": [
+        {
+          "title": "EE19001: Electrical Technology Lab",
+          "url": "https://wiki.metakgp.org/w/EE19001:_Electrical_Technology_Lab",
+          "supporting_text": [
+            "Course name: Electrical Technology Laboratory",
+            "Credits: 2"
+          ]
+        },
+        {
+          "title": "CS43002: Database Management Systems",
+          "url": "https://wiki.metakgp.org/w/CS43002:_Database_Management_Systems",
+          "supporting_text": [
+            "Course name: Database Management Systems",
+            "Credits: 5"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GMQ046",
+      "category": "abstain",
+      "subtype": "unsupported_or_time_sensitive",
+      "question": "What is the current real-time occupancy of IIT Kharagpur's Central Library?",
+      "expected_outcome": "abstain",
+      "reference_answer": "I do not know based on the indexed documents.",
+      "required_answer_terms": [],
+      "evidence": [],
+      "abstention_reason": "The frozen MetaKGP snapshot contains no real-time occupancy feed."
+    },
+    {
+      "id": "GMQ047",
+      "category": "abstain",
+      "subtype": "unsupported_or_time_sensitive",
+      "question": "What was the exact classroom attendance for MA40009 on 14 September 2026?",
+      "expected_outcome": "abstain",
+      "reference_answer": "I do not know based on the indexed documents.",
+      "required_answer_terms": [],
+      "evidence": [],
+      "abstention_reason": "The snapshot does not record attendance for that class and date."
+    },
+    {
+      "id": "GMQ048",
+      "category": "abstain",
+      "subtype": "unsupported_or_time_sensitive",
+      "question": "What was the temperature inside room NC232 at noon on 14 September 2026?",
+      "expected_outcome": "abstain",
+      "reference_answer": "I do not know based on the indexed documents.",
+      "required_answer_terms": [],
+      "evidence": [],
+      "abstention_reason": "The snapshot contains no room sensor measurement for that time."
+    },
+    {
+      "id": "GMQ049",
+      "category": "abstain",
+      "subtype": "unsupported_or_time_sensitive",
+      "question": "Who will teach CS40026 Computational Geometry in the year 2030?",
+      "expected_outcome": "abstain",
+      "reference_answer": "I do not know based on the indexed documents.",
+      "required_answer_terms": [],
+      "evidence": [],
+      "abstention_reason": "The snapshot cannot establish a future instructor assignment."
+    },
+    {
+      "id": "GMQ050",
+      "category": "abstain",
+      "subtype": "unsupported_or_time_sensitive",
+      "question": "What is today's menu at every IIT Kharagpur dining hall?",
+      "expected_outcome": "abstain",
+      "reference_answer": "I do not know based on the indexed documents.",
+      "required_answer_terms": [],
+      "evidence": [],
+      "abstention_reason": "The frozen snapshot does not provide a current complete dining-hall menu."
+    }
+  ]
+}
