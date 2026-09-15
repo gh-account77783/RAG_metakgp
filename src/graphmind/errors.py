@@ -99,3 +99,63 @@ class ProviderError(GraphMindError):
 
 class ProviderResponseError(ProviderError):
     code = "invalid_provider_response"
+
+
+class ProviderAuthenticationError(ProviderError):
+    code = "provider_authentication_error"
+
+
+class ProviderRateLimitError(ProviderError):
+    code = "provider_rate_limited"
+
+
+class ProviderTimeoutError(ProviderError):
+    code = "provider_timeout"
+
+
+class ProviderUnavailableError(ProviderError):
+    code = "provider_unavailable"
+
+
+class ModelNotFoundError(ProviderError):
+    code = "model_not_found"
+
+
+class EmbeddingError(GraphMindError):
+    code = "embedding_error"
+
+
+class EmbeddingUnavailableError(EmbeddingError):
+    code = "embedding_unavailable"
+
+
+class EmbeddingModelNotFoundError(EmbeddingError):
+    code = "embedding_model_not_found"
+
+
+class EmbeddingResponseError(EmbeddingError):
+    code = "invalid_embedding_response"
+
+
+class EmbeddingDimensionError(EmbeddingError):
+    code = "embedding_dimension_mismatch"
+
+
+class EmbeddingMismatchError(EmbeddingError):
+    code = "embedding_fingerprint_mismatch"
+
+
+class QueryBudgetError(GraphMindError):
+    code = "query_budget_exceeded"
+
+
+class QueryCapacityError(GraphMindError):
+    code = "query_capacity_exceeded"
+
+
+class QueryCancelledError(GraphMindError):
+    code = "query_cancelled"
+
+
+class EvaluationError(GraphMindError):
+    code = "evaluation_error"

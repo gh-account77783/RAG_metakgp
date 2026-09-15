@@ -400,6 +400,21 @@ class MetadataStore:
             raise ManifestUnavailableError("Cannot read the active document manifest") from exc
         return {str(row[0]) for row in rows}
 
+    def active_embedding_fingerprints(self) -> set[str]:
+        try:
+            with self.connection() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT DISTINCT v.embedding_fingerprint
+                    FROM documents d
+                    JOIN versions v ON v.version_id = d.active_version_id
+                    WHERE d.deleted_at IS NULL AND v.status = 'ready'
+                    """
+                ).fetchall()
+        except sqlite3.Error as exc:
+            raise ManifestUnavailableError("Cannot read active embedding fingerprints") from exc
+        return {str(row[0]) for row in rows}
+
     def active_chunks(self, chunk_ids: Sequence[str]) -> dict[str, tuple[Chunk, Document]]:
         if not chunk_ids:
             return {}

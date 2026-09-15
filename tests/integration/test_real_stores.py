@@ -10,12 +10,14 @@ from pathlib import Path
 
 from graphmind.config import Settings
 from graphmind.domain import Outcome
+from graphmind.embeddings import OllamaEmbedding
 from graphmind.providers import ExtractiveProvider, OllamaProvider
 from graphmind.service import GraphMindApplication
 
 
 RUN_INTEGRATION = os.environ.get("GRAPHMIND_RUN_INTEGRATION") == "1"
 RUN_MODEL = os.environ.get("GRAPHMIND_RUN_MODEL_INTEGRATION") == "1"
+RUN_LOCAL_MODEL = os.environ.get("GRAPHMIND_RUN_LOCAL_MODEL_INTEGRATION") == "1"
 
 
 def _test_dotenv(repository: Path) -> Path:
@@ -153,19 +155,109 @@ class RealModelIntegrationTests(unittest.TestCase):
             settings.ollama_api_key,
             settings.answer_model,
         )
-        evidence = Evidence(
-            citation_id="fixture-citation",
-            document_id="fixture-document",
-            version_id="fixture-version",
-            display_name="fixture.txt",
-            locator="line 1",
-            excerpt="The launch code is CERULEAN.",
-            via="vector",
-            score=1.0,
+        evidence = [
+            Evidence(
+                citation_id="fixture-a",
+                document_id="fixture-document-a",
+                version_id="fixture-version-a",
+                display_name="A.txt",
+                locator="line 1",
+                excerpt=(
+                    "The blue lantern protocol controls Zephyr authorization values. "
+                    "The answer record is maintained in B.txt."
+                ),
+                via="vector",
+                score=1.0,
+            ),
+            Evidence(
+                citation_id="fixture-b",
+                document_id="fixture-document-b",
+                version_id="fixture-version-b",
+                display_name="B.txt",
+                locator="line 1",
+                excerpt="The requested authorization value is CERULEAN.",
+                via="graph",
+                score=0.0,
+            ),
+        ]
+        result = provider.answer(
+            "Under the blue lantern protocol for Zephyr, what is the authorization value?",
+            evidence,
         )
-        result = provider.answer("What is the launch code?", [evidence])
         self.assertEqual(result.outcome, Outcome.ANSWER)
-        self.assertIn("fixture-citation", result.citation_ids)
+        self.assertIn("fixture-b", result.citation_ids)
+        self.assertIn("CERULEAN", result.answer.upper())
+
+
+@unittest.skipUnless(
+    RUN_LOCAL_MODEL,
+    "set GRAPHMIND_RUN_LOCAL_MODEL_INTEGRATION=1 for local Ollama models",
+)
+class RealLocalModelIntegrationTests(unittest.TestCase):
+    def test_local_bge_m3_and_gemma_return_identified_grounded_results(self):
+        from graphmind.domain import Evidence
+
+        base_url = os.environ.get(
+            "GRAPHMIND_LOCAL_OLLAMA_BASE_URL", "http://127.0.0.1:11434"
+        )
+        embedding_model = os.environ.get(
+            "GRAPHMIND_LOCAL_EMBEDDING_MODEL", "bge-m3"
+        )
+        answer_model = os.environ.get("GRAPHMIND_LOCAL_ANSWER_MODEL", "gemma4:e2b")
+        embedding = OllamaEmbedding(
+            base_url,
+            embedding_model,
+            "BAAI/bge-m3",
+            dimension=1024,
+        )
+        embedding_identity = embedding.identity()
+        self.assertEqual(embedding_identity["dimension"], 1024)
+        self.assertEqual(len(str(embedding_identity["revision"])), 64)
+        vector = embedding.embed("The launch code is CERULEAN.")
+        self.assertEqual(len(vector), 1024)
+
+        provider = OllamaProvider(
+            base_url,
+            "",
+            answer_model,
+            mode="local",
+            timeout=120,
+            max_retries=0,
+        )
+        provider_identity = provider.identity(resolve=True)
+        self.assertEqual(provider_identity["mode"], "local")
+        self.assertEqual(len(str(provider_identity["digest"])), 64)
+        evidence = [
+            Evidence(
+                citation_id="fixture-a",
+                document_id="fixture-document-a",
+                version_id="fixture-version-a",
+                display_name="A.txt",
+                locator="line 1",
+                excerpt=(
+                    "The blue lantern protocol controls Zephyr authorization values. "
+                    "The answer record is maintained in B.txt."
+                ),
+                via="vector",
+                score=1.0,
+            ),
+            Evidence(
+                citation_id="fixture-b",
+                document_id="fixture-document-b",
+                version_id="fixture-version-b",
+                display_name="B.txt",
+                locator="line 1",
+                excerpt="The requested authorization value is CERULEAN.",
+                via="graph",
+                score=0.0,
+            ),
+        ]
+        result = provider.answer(
+            "Under the blue lantern protocol for Zephyr, what is the authorization value?",
+            evidence,
+        )
+        self.assertEqual(result.outcome, Outcome.ANSWER)
+        self.assertIn("fixture-b", result.citation_ids)
         self.assertIn("CERULEAN", result.answer.upper())
 
 

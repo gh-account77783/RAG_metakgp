@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .config import Settings
 from .domain import AdapterStatus
-from .embeddings import HashEmbedding
+from .embeddings import EmbeddingProvider, HashEmbedding, OllamaEmbedding
 from .files import FileStore, PrivateFileStore
 from .ingestion import IngestionService
 from .jobs import DurableJobExecutor
@@ -13,6 +13,22 @@ from .parsing import IsolatedExtractor
 from .providers import AnswerProvider, OllamaProvider
 from .retrieval import AnswerService, RetrievalService
 from .storage import ChromaVectorStore, GraphStore, Neo4jGraphStore, VectorStore
+
+
+def build_embedding(settings: Settings) -> EmbeddingProvider:
+    if settings.embedding_provider == "ollama":
+        return OllamaEmbedding(
+            settings.embedding_base_url,
+            settings.embedding_model,
+            settings.embedding_model_id,
+            dimension=settings.embedding_dimension,
+            revision=settings.embedding_revision,
+            precision=settings.embedding_precision,
+            api_key=settings.embedding_api_key,
+            timeout=float(settings.embedding_timeout_seconds),
+            batch_size=settings.embedding_batch_size,
+        )
+    return HashEmbedding(settings.embedding_dimension)
 
 
 class GraphMindApplication:
@@ -26,6 +42,7 @@ class GraphMindApplication:
         metadata: MetadataStore | None = None,
         files: FileStore | None = None,
         extractor: IsolatedExtractor | None = None,
+        embedding: EmbeddingProvider | None = None,
         failure_injector=None,
     ) -> None:
         self.settings = settings
@@ -33,7 +50,12 @@ class GraphMindApplication:
         self.metadata = metadata or MetadataStore(settings.sqlite_path)
         self.metadata.migrate()
         self.installation_id = self.metadata.installation_id()
-        self.embedding = HashEmbedding(settings.embedding_dimension)
+        if embedding is not None:
+            self.embedding = embedding
+        elif vector is not None and hasattr(vector, "embedding"):
+            self.embedding = vector.embedding
+        else:
+            self.embedding = build_embedding(settings)
         self.files = files or PrivateFileStore(settings.data_dir, settings.files_dir)
         self.extractor = extractor or IsolatedExtractor(settings)
         self.extractor.cleanup_abandoned()
@@ -63,17 +85,43 @@ class GraphMindApplication:
             lease_seconds=settings.job_lease_seconds,
         )
         self.retrieval = RetrievalService(
-            self.metadata, self.vector, self.graph, self.installation_id
+            self.metadata,
+            self.vector,
+            self.graph,
+            self.installation_id,
+            seed_limit=settings.retrieval_seed_limit,
+            graph_limit=settings.retrieval_graph_limit,
+            graph_scope=settings.retrieval_graph_scope,
+            max_evidence=settings.retrieval_max_evidence,
+            min_vector_score=settings.retrieval_min_vector_score,
+            max_question_chars=settings.max_question_chars,
         )
         selected_provider = provider or OllamaProvider(
             settings.ollama_base_url,
             settings.ollama_api_key,
             settings.answer_model,
+            mode=settings.answer_mode,
+            timeout=float(settings.answer_timeout_seconds),
+            max_retries=settings.answer_max_retries,
+            max_context_chars=settings.answer_max_context_chars,
+            max_output_tokens=settings.answer_max_output_tokens,
         )
-        self.answers = AnswerService(self.metadata, self.retrieval, selected_provider)
+        self.answers = AnswerService(
+            self.metadata,
+            self.retrieval,
+            selected_provider,
+            max_concurrent_queries=settings.max_concurrent_queries,
+            max_queued_queries=settings.max_queued_queries,
+            queue_timeout=settings.query_queue_timeout_seconds,
+        )
 
     def readiness(self):
-        statuses = [self.files.readiness(), self.vector.readiness(), self.graph.readiness()]
+        statuses = [
+            self.files.readiness(),
+            self.embedding.readiness(),
+            self.vector.readiness(),
+            self.graph.readiness(),
+        ]
         statuses.append(self.audit_manifest())
         return tuple(statuses)
 

@@ -4,7 +4,8 @@
   "frozen_on": "2026-09-14",
   "source": {
     "path": "Crawler/cleaned_wiki.jsonl",
-    "sha256": "814139b42f6ad0dcab397fd0806f946ba7f2f32908ac04dfb4ee7cc72bc71fbd",
+    "sha256": "91042d22190e441f9242dc29f5615262ad57251e4d0053df82fd0f09936b83e9",
+    "sha256_normalization": "UTF-8 bytes with CRLF and lone CR converted to LF",
     "document_count": 3585,
     "snapshot_note": "Questions and reference evidence are frozen against the checked-in development snapshot; they are not claims about current IIT Kharagpur state."
   },

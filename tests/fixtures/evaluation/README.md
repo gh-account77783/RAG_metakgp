@@ -14,7 +14,9 @@ The 50 cases are intentionally balanced:
 Reference answers describe what the frozen snapshot supports. They are not claims
 about current IIT Kharagpur people, courses, schedules, or services. Every
 answerable case records exact supporting text and the source URL. Automated tests
-verify those excerpts and graph edges against the snapshot hash.
+verify those excerpts and graph edges against the snapshot hash. The hash uses
+UTF-8 bytes after normalizing CRLF and lone CR line endings to LF, so Git checkout
+settings cannot change the dataset identity.
 
 P4 must report retrieval and answer behavior separately. A cited answer passes
 only when required facts are correct and its eligible citations support those

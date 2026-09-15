@@ -17,6 +17,9 @@ class MetaKGPEvaluationFixtureTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
         cls.source_bytes = SOURCE_PATH.read_bytes()
+        cls.normalized_source_bytes = cls.source_bytes.replace(b"\r\n", b"\n").replace(
+            b"\r", b"\n"
+        )
         cls.documents = [
             json.loads(line)
             for line in cls.source_bytes.decode("utf-8").splitlines()
@@ -42,7 +45,13 @@ class MetaKGPEvaluationFixtureTests(unittest.TestCase):
     def test_source_snapshot_and_evidence_are_exact(self) -> None:
         source = self.fixture["source"]
         self.assertEqual(source["document_count"], len(self.documents))
-        self.assertEqual(source["sha256"], hashlib.sha256(self.source_bytes).hexdigest())
+        self.assertEqual(
+            source["sha256_normalization"],
+            "UTF-8 bytes with CRLF and lone CR converted to LF",
+        )
+        self.assertEqual(
+            source["sha256"], hashlib.sha256(self.normalized_source_bytes).hexdigest()
+        )
 
         for case in self.fixture["cases"]:
             with self.subTest(case=case["id"]):

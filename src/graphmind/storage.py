@@ -6,11 +6,13 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from .domain import AdapterStatus, Chunk, Document, SearchHit, Version
-from .embeddings import HashEmbedding, cosine_similarity
-from .errors import DependencyUnavailableError
+from .embeddings import EmbeddingProvider, cosine_similarity
+from .errors import DependencyUnavailableError, EmbeddingMismatchError, GraphMindError
 
 
 class VectorStore(Protocol):
+    @property
+    def embedding_fingerprint(self) -> str: ...
     def readiness(self) -> AdapterStatus: ...
     def upsert_version(self, installation_id: str, chunks: Sequence[Chunk]) -> None: ...
     def count_version(self, installation_id: str, version_id: str) -> int: ...
@@ -31,25 +33,36 @@ class GraphStore(Protocol):
     ) -> None: ...
     def count_version(self, installation_id: str, version_id: str) -> int: ...
     def chunk_ids_for_version(self, installation_id: str, version_id: str) -> set[str]: ...
-    def expand(self, installation_id: str, seed_chunk_ids: Sequence[str], limit: int) -> list[str]: ...
+    def expand(
+        self,
+        installation_id: str,
+        seed_chunk_ids: Sequence[str],
+        limit: int,
+        scope: str = "chunk",
+    ) -> list[str]: ...
     def delete_document(self, installation_id: str, document_id: str) -> None: ...
     def close(self) -> None: ...
 
 
 class MemoryVectorStore:
-    def __init__(self, embedding: HashEmbedding) -> None:
+    def __init__(self, embedding: EmbeddingProvider) -> None:
         self.embedding = embedding
         self._items: dict[tuple[str, str], tuple[str, str, list[float], str]] = {}
+
+    @property
+    def embedding_fingerprint(self) -> str:
+        return self.embedding.fingerprint
 
     def readiness(self) -> AdapterStatus:
         return AdapterStatus("memory-vector", True, "ready")
 
     def upsert_version(self, installation_id: str, chunks: Sequence[Chunk]) -> None:
-        for chunk in chunks:
+        vectors = self.embedding.embed_many([chunk.text for chunk in chunks])
+        for chunk, vector in zip(chunks, vectors, strict=True):
             self._items[(installation_id, chunk.chunk_id)] = (
                 chunk.version_id,
                 chunk.document_id,
-                self.embedding.embed(chunk.text),
+                vector,
                 chunk.text,
             )
 
@@ -118,12 +131,32 @@ class MemoryGraphStore:
             if item_installation == installation_id and chunk.version_id == version_id
         }
 
-    def expand(self, installation_id: str, seed_chunk_ids: Sequence[str], limit: int) -> list[str]:
+    def expand(
+        self,
+        installation_id: str,
+        seed_chunk_ids: Sequence[str],
+        limit: int,
+        scope: str = "chunk",
+    ) -> list[str]:
+        if limit <= 0:
+            return []
+        seed_chunks = [
+            self._chunks[(installation_id, chunk_id)]
+            for chunk_id in seed_chunk_ids
+            if (installation_id, chunk_id) in self._chunks
+        ]
+        reference_sources = seed_chunks
+        if scope == "document":
+            source_versions = {(chunk.document_id, chunk.version_id) for chunk in seed_chunks}
+            reference_sources = [
+                chunk
+                for (item_installation, _), chunk in self._chunks.items()
+                if item_installation == installation_id
+                and (chunk.document_id, chunk.version_id) in source_versions
+            ]
         target_names: set[str] = set()
-        for chunk_id in seed_chunk_ids:
-            chunk = self._chunks.get((installation_id, chunk_id))
-            if chunk:
-                target_names.update(chunk.reference_names)
+        for chunk in reference_sources:
+            target_names.update(chunk.reference_names)
         target_documents = {
             document.document_id
             for (item_installation, _), document in self._documents.items()
@@ -147,31 +180,46 @@ class MemoryGraphStore:
 
 
 class ChromaVectorStore:
-    def __init__(self, path: str, collection_name: str, embedding: HashEmbedding) -> None:
+    def __init__(self, path: str, collection_name: str, embedding: EmbeddingProvider) -> None:
         self.path = path
         self.collection_name = collection_name
         self.embedding = embedding
         self._client = None
         self._collection = None
 
+    @property
+    def embedding_fingerprint(self) -> str:
+        return self.embedding.fingerprint
+
     def _get_collection(self):
         if self._collection is not None:
             return self._collection
         try:
             import chromadb
+            from chromadb.errors import NotFoundError
 
             self._client = chromadb.PersistentClient(path=self.path)
-            self._collection = self._client.get_or_create_collection(
-                name=self.collection_name,
-                metadata={"hnsw:space": "cosine", "graphmind_embedding": self.embedding.fingerprint},
-            )
-            metadata = self._collection.metadata or {}
-            stored_fingerprint = metadata.get("graphmind_embedding")
-            if stored_fingerprint and stored_fingerprint != self.embedding.fingerprint:
-                raise DependencyUnavailableError(
-                    "Chroma collection embedding fingerprint does not match configuration"
+            expected_fingerprint = self.embedding.fingerprint
+            try:
+                collection = self._client.get_collection(name=self.collection_name)
+            except NotFoundError:
+                collection = self._client.create_collection(
+                    name=self.collection_name,
+                    metadata={
+                        "hnsw:space": "cosine",
+                        "graphmind_embedding": expected_fingerprint,
+                    },
                 )
+            metadata = collection.metadata or {}
+            stored_fingerprint = metadata.get("graphmind_embedding")
+            if stored_fingerprint != expected_fingerprint:
+                raise EmbeddingMismatchError(
+                    "Chroma collection embedding fingerprint is missing or does not match configuration"
+                )
+            self._collection = collection
             return self._collection
+        except GraphMindError:
+            raise
         except Exception as exc:
             raise DependencyUnavailableError("Chroma is unavailable") from exc
 
@@ -179,7 +227,7 @@ class ChromaVectorStore:
         try:
             self._get_collection().count()
             return AdapterStatus("chroma", True, "ready")
-        except DependencyUnavailableError as exc:
+        except GraphMindError as exc:
             return AdapterStatus("chroma", False, str(exc))
 
     def upsert_version(self, installation_id: str, chunks: Sequence[Chunk]) -> None:
@@ -188,7 +236,7 @@ class ChromaVectorStore:
         try:
             self._get_collection().upsert(
                 ids=[chunk.chunk_id for chunk in chunks],
-                embeddings=[self.embedding.embed(chunk.text) for chunk in chunks],
+                embeddings=self.embedding.embed_many([chunk.text for chunk in chunks]),
                 documents=[chunk.text for chunk in chunks],
                 metadatas=[
                     {
@@ -201,6 +249,8 @@ class ChromaVectorStore:
                     for chunk in chunks
                 ],
             )
+        except GraphMindError:
+            raise
         except Exception as exc:
             raise DependencyUnavailableError("Chroma version write failed") from exc
 
@@ -216,6 +266,8 @@ class ChromaVectorStore:
                 include=[],
             )
             return len(result.get("ids") or [])
+        except GraphMindError:
+            raise
         except Exception as exc:
             raise DependencyUnavailableError("Chroma count failed") from exc
 
@@ -231,6 +283,8 @@ class ChromaVectorStore:
                 include=[],
             )
             return {str(chunk_id) for chunk_id in (result.get("ids") or [])}
+        except GraphMindError:
+            raise
         except Exception as exc:
             raise DependencyUnavailableError("Chroma chunk-ID read failed") from exc
 
@@ -248,6 +302,8 @@ class ChromaVectorStore:
                 SearchHit(chunk_id=str(chunk_id), score=1.0 - float(distance))
                 for chunk_id, distance in zip(ids, distances, strict=True)
             ]
+        except GraphMindError:
+            raise
         except Exception as exc:
             raise DependencyUnavailableError("Chroma query failed") from exc
 
@@ -261,12 +317,16 @@ class ChromaVectorStore:
                     ]
                 }
             )
+        except GraphMindError:
+            raise
         except Exception as exc:
             raise DependencyUnavailableError("Chroma document cleanup failed") from exc
 
     def delete_installation(self, installation_id: str) -> None:
         try:
             self._get_collection().delete(where={"installation_id": {"$eq": installation_id}})
+        except GraphMindError:
+            raise
         except Exception as exc:
             raise DependencyUnavailableError("Chroma cleanup failed") from exc
 
@@ -417,17 +477,39 @@ class Neo4jGraphStore:
         except Exception as exc:
             raise DependencyUnavailableError("Neo4j chunk-ID read failed") from exc
 
-    def expand(self, installation_id: str, seed_chunk_ids: Sequence[str], limit: int) -> list[str]:
-        if not seed_chunk_ids:
+    def expand(
+        self,
+        installation_id: str,
+        seed_chunk_ids: Sequence[str],
+        limit: int,
+        scope: str = "chunk",
+    ) -> list[str]:
+        if not seed_chunk_ids or limit <= 0:
             return []
-        try:
-            records, _, _ = self._get_driver().execute_query(
-                """
-                UNWIND $seed_ids AS seed_id
+        if scope == "document":
+            relation = """
+                MATCH (seed:GraphMindChunk {
+                    installation_id: $installation_id,
+                    chunk_id: seed_id
+                })
+                MATCH (source:GraphMindChunk {
+                    installation_id: $installation_id,
+                    document_id: seed.document_id,
+                    version_id: seed.version_id
+                })-[:REFERENCES]->(target:GraphMindDocument)
+            """
+        else:
+            relation = """
                 MATCH (source:GraphMindChunk {
                     installation_id: $installation_id,
                     chunk_id: seed_id
                 })-[:REFERENCES]->(target:GraphMindDocument)
+            """
+        try:
+            records, _, _ = self._get_driver().execute_query(
+                f"""
+                UNWIND $seed_ids AS seed_id
+                {relation}
                 MATCH (target)-[:HAS_VERSION]->(:GraphMindVersion)-[:HAS_CHUNK]->(chunk:GraphMindChunk)
                 RETURN DISTINCT chunk.chunk_id AS chunk_id
                 ORDER BY chunk_id

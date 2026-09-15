@@ -5,14 +5,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from .config import Settings
 from .domain import Outcome
 from .errors import GraphMindError
+from .evaluation import EvaluationRunner, FrozenEvaluationDataset
 from .providers import ExtractiveProvider
-from .service import GraphMindApplication
+from .service import GraphMindApplication, build_embedding
+from .storage import MemoryGraphStore, MemoryVectorStore
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -60,6 +62,9 @@ def _parser() -> argparse.ArgumentParser:
 
     subcommands.add_parser("worker-once", help="Run at most one queued ingestion job")
     subcommands.add_parser("status", help="List documents and durable jobs")
+    subcommands.add_parser(
+        "embedding-status", help="Compare configured and active index embedding fingerprints"
+    )
 
     query_parser = subcommands.add_parser("query", help="Query active documents")
     query_parser.add_argument("question")
@@ -67,6 +72,34 @@ def _parser() -> argparse.ArgumentParser:
         "--extractive",
         action="store_true",
         help="Use the offline acceptance provider instead of the configured model",
+    )
+
+    materialize_parser = subcommands.add_parser(
+        "eval-materialize", help="Materialize a frozen development evaluation fixture"
+    )
+    materialize_parser.add_argument("--fixture", type=Path, required=True)
+    materialize_parser.add_argument("--source", type=Path, required=True)
+    materialize_parser.add_argument("--output", type=Path, required=True)
+
+    evaluate_parser = subcommands.add_parser(
+        "evaluate", help="Run and score a frozen evaluation fixture"
+    )
+    evaluate_parser.add_argument("--fixture", type=Path, required=True)
+    evaluate_parser.add_argument("--source", type=Path, required=True)
+    evaluate_parser.add_argument("--work-dir", type=Path, required=True)
+    evaluate_parser.add_argument("--report", type=Path, required=True)
+    evaluate_parser.add_argument("--label", required=True)
+    evaluate_parser.add_argument(
+        "--extractive", action="store_true", help="Use the offline diagnostic answer provider"
+    )
+    evaluate_parser.add_argument("--skip-import", action="store_true")
+    evaluate_parser.add_argument("--vector-only", action="store_true")
+    evaluate_parser.add_argument("--graph-scope", choices=("chunk", "document"))
+    evaluate_parser.add_argument("--resolve-model-identity", action="store_true")
+    evaluate_parser.add_argument(
+        "--memory-stores",
+        action="store_true",
+        help="Use exact in-memory vector/graph adapters for diagnostic evaluation",
     )
     return parser
 
@@ -118,12 +151,49 @@ def main(argv: list[str] | None = None) -> None:
     parser = _parser()
     args = parser.parse_args(argv)
     try:
+        if args.command == "eval-materialize":
+            dataset = FrozenEvaluationDataset(args.fixture, args.source)
+            materialized = dataset.materialize(args.output)
+            print(
+                json.dumps(
+                    {
+                        "dataset_id": materialized.dataset_id,
+                        "document_count": len(materialized.document_paths),
+                        "materialization_sha256": materialized.materialization_sha256,
+                        "manifest": str(materialized.manifest_path),
+                    },
+                    indent=2,
+                )
+            )
+            return
         settings = _settings(args)
         if args.command == "config":
             print(json.dumps(settings.diagnostics(), indent=2, ensure_ascii=False))
             return
+        dataset = None
+        materialized = None
+        if args.command == "evaluate":
+            work_dir = args.work_dir.expanduser().resolve()
+            dataset = FrozenEvaluationDataset(args.fixture, args.source)
+            materialized = dataset.materialize(work_dir / "materialized")
+            settings = replace(
+                settings,
+                data_dir=(settings.data_dir if args.data_dir else work_dir / "runtime"),
+                allowed_import_roots=(materialized.root,),
+            )
+            settings.validate()
         provider = ExtractiveProvider() if getattr(args, "extractive", False) else None
-        with GraphMindApplication(settings, provider=provider) as app:
+        app_options = {"provider": provider}
+        if args.command == "evaluate" and args.memory_stores:
+            embedding = build_embedding(settings)
+            app_options.update(
+                {
+                    "embedding": embedding,
+                    "vector": MemoryVectorStore(embedding),
+                    "graph": MemoryGraphStore(),
+                }
+            )
+        with GraphMindApplication(settings, **app_options) as app:
             if args.command == "init":
                 print(json.dumps(_status(app), indent=2))
             elif args.command == "doctor":
@@ -162,11 +232,83 @@ def main(argv: list[str] | None = None) -> None:
                 print(json.dumps({"processed_job": job.job_id if job else None}, indent=2))
             elif args.command == "status":
                 print(json.dumps(_status(app), indent=2))
+            elif args.command == "embedding-status":
+                active = sorted(app.metadata.active_embedding_fingerprints())
+                current = app.vector.embedding_fingerprint
+                print(
+                    json.dumps(
+                        {
+                            "configured_fingerprint": current,
+                            "active_fingerprints": active,
+                            "compatible": not (set(active) - {current}),
+                            "rebuild": (
+                                "Reindex every active source with the configured embedding and a new "
+                                "Chroma collection before querying."
+                            ),
+                        },
+                        indent=2,
+                    )
+                )
             elif args.command == "query":
                 result = app.answers.query(args.question)
                 print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
                 if result.outcome is Outcome.ERROR:
                     raise SystemExit(3)
+            elif args.command == "evaluate":
+                assert dataset is not None and materialized is not None
+                if not args.skip_import:
+                    for path in materialized.document_paths:
+                        submission = app.ingestion.prepare_import(path)
+                        if submission.job.status.value == "failed":
+                            app.metadata.retry_job(submission.job.job_id)
+                        if submission.job.status.value != "succeeded":
+                            app.jobs.run_once()
+                        completed = app.metadata.job(submission.job.job_id)
+                        if completed is None or completed.status.value != "succeeded":
+                            raise GraphMindError(f"Evaluation import failed for {path.name}")
+                if args.vector_only:
+                    app.retrieval.graph_limit = 0
+                if args.graph_scope:
+                    app.retrieval.graph_scope = args.graph_scope
+                embedding_identity = (
+                    app.embedding.identity()
+                    if hasattr(app.embedding, "identity")
+                    else {
+                        "provider": "diagnostic-hash",
+                        "dimension": app.embedding.dimension,
+                        "fingerprint": app.embedding.fingerprint,
+                    }
+                )
+                selected_provider = app.answers.provider
+                provider_identity = (
+                    selected_provider.identity(resolve=args.resolve_model_identity)
+                    if hasattr(selected_provider, "identity")
+                    else {"provider": type(selected_provider).__name__}
+                )
+                runner = EvaluationRunner(
+                    dataset,
+                    materialized,
+                    app.answers,
+                    embedding_identity=embedding_identity,
+                    provider_identity=provider_identity,
+                    retrieval_configuration={
+                        "seed_limit": app.retrieval.seed_limit,
+                        "graph_limit": app.retrieval.graph_limit,
+                        "graph_scope": app.retrieval.graph_scope,
+                        "max_evidence": app.retrieval.max_evidence,
+                        "min_vector_score": app.retrieval.min_vector_score,
+                        "max_question_chars": app.retrieval.max_question_chars,
+                        "max_concurrent_queries": settings.max_concurrent_queries,
+                        "max_queued_queries": settings.max_queued_queries,
+                        "query_queue_timeout_seconds": settings.query_queue_timeout_seconds,
+                        "vector_only": bool(args.vector_only),
+                    },
+                    label=args.label,
+                )
+                report = runner.run(args.report)
+                print(json.dumps(report["summary"], indent=2))
+                if not report["summary"]["gate_passed"]:
+                    raise SystemExit(4)
     except GraphMindError as exc:
         print(json.dumps({"error": exc.code, "message": str(exc)}), file=sys.stderr)
         raise SystemExit(2) from exc

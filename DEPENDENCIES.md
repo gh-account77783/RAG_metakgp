@@ -56,6 +56,19 @@ transitives. They need independent version, checksum, source, terms, platform,
 memory, latency, and egress records. Hosted model names alone do not establish
 reproducibility because providers can update an endpoint behind a name.
 
+P4 uses Python's standard-library HTTP client for the Ollama-compatible embedding
+and answer adapters. It therefore adds no direct Python distribution to the
+CPython 3.13 resolver snapshot. The adapter records the full digest, reported
+precision, dimension, endpoint mode, model tag, and request budgets in evaluation
+reports. An embedding identity mismatch fails closed and requires an explicit
+reindex; an answer-model change does not change the vector index.
+
+The official Ollama `bge-m3` tag currently reports FP16. The implementation
+accepts `auto` and records that observed precision. If an operator requests FP8
+while the runtime reports another precision, startup/readiness fails rather than
+recording a false FP8 claim. An exact FP8 artifact remains an open measured
+alternative, not an implemented dependency.
+
 ## P5/P6 browser, OAuth, and MCP group
 
 The user moved the MCP/OAuth design spike and implementation to P5/P6. These

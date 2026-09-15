@@ -1,6 +1,6 @@
 # GraphMind
 
-GraphMind is being generalized into a self-hosted document RAG service backed by Chroma and a Neo4j document graph. The installable `graphmind` package currently provides the P1-P3 local foundation: durable SQLite metadata and jobs, validated configuration, isolated PDF/DOCX/TXT/Markdown/CSV extraction, staged dual-store publication, immutable replacement versions, tombstone-first deletion, bounded graph retrieval, and verified citations.
+GraphMind is being generalized into a self-hosted document RAG service backed by Chroma and a Neo4j document graph. The installable `graphmind` package currently provides the P1-P4 foundation: durable SQLite metadata and jobs, validated configuration, isolated PDF/DOCX/TXT/Markdown/CSV extraction, staged dual-store publication, immutable replacement versions, tombstone-first deletion, bounded graph retrieval, semantic BGE-M3 embeddings, local or hosted Ollama-compatible answer generation, and verified citations.
 
 The original MetaKGP crawler and reasoning code remains in the repository as a legacy test prototype. It is not part of the generic package path and is not intended for the final user distribution.
 
@@ -24,7 +24,45 @@ Text extraction runs in a time-limited subprocess. PDF OCR and password-protecte
 
 Deletion removes a document from the active manifest before its durable cleanup job touches Chroma, Neo4j, or private originals. A failed cleanup remains retryable with `graphmind retry <job-id>`. Reindexing creates a new immutable version when parser, chunker, embedding configuration, or document content changes, and the previous version remains active until both retrieval stores verify the replacement.
 
-The deterministic hash embedding remains an integration baseline rather than the final semantic embedding selected in P4. The public reader UI, authenticated remote MCP service, and release installers belong to later phases.
+The deterministic hash embedding remains available only as an offline diagnostic adapter. The P4 production candidate uses `BAAI/bge-m3` through same-host Ollama and fingerprints the full model digest, runtime-reported precision, and 1024-dimensional output in every index. Changing that identity requires explicit reindexing. The public reader UI, authenticated remote MCP service, and release installers belong to later phases.
+
+## P4 model and retrieval evaluation
+
+`graphmind evaluate` materializes the frozen 50-case MetaKGP fixture into 49
+ordinary Markdown documents, imports them through the production pipeline, and
+writes per-case retrieval, graph, answer, citation, provider-call, and latency
+results. It does not treat the development JSONL snapshot as a supported user
+format. A passing automatic score still requires human review for unsupported
+additional claims.
+
+On the Ubuntu 24.04 EC2 test host, first run `test-deploy.sh` to validate the
+package and start the localhost-only Neo4j container. After committing and
+pulling the P4 candidate, run:
+
+```bash
+bash p4-evaluate.sh --install-ollama --pull-models
+```
+
+The script pins Ollama 0.34.0, verifies local `bge-m3` and `gemma4:e2b`, records
+their full digests, runs the 50-case local chunk-scope baseline, then compares
+vector-only and document-scope retrieval. Add `--with-hosted` after configuring
+the private dotenv reported by `test-deploy.sh`, then use `--hosted-only` to run
+the hosted-answer baseline without loading local `gemma4:e2b`; it still uses
+local `bge-m3` so the embedding/retrieval configuration stays identical. `--with-hosted` runs
+both modes in one self-contained session. Reports and host evidence remain outside
+the checkout under `~/.local/state/graphmind-p4-evaluation`.
+
+Native Windows uses the same evaluation contract:
+
+```powershell
+.\p4-evaluate.ps1 -PullModels
+.\p4-evaluate.ps1 -HostedOnly
+```
+
+Both scripts require a clean committed checkout and preserve failed quality
+reports before returning exit code 4 when a selected accepted baseline misses
+its threshold. They do not expose a service, change a security group, or implement the
+later browser/OAuth/MCP phases.
 
 ## Ubuntu 24.04 EC2 validation
 
