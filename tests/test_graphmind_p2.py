@@ -365,6 +365,7 @@ class PublicationAndRetrievalTests(unittest.TestCase):
             '{"outcome":"answer","answer":"x","citation_ids":"chunk"}',
             '{"outcome":"insufficient_evidence","answer":"unknown","citation_ids":["chunk"]}',
             '{"outcome":"error","answer":"failed","citation_ids":[]}',
+            '{"outcome":"CERULEAN","answer":"x","citation_ids":["chunk"]}',
             '[]',
         )
         for payload in invalid_payloads:

@@ -243,6 +243,40 @@ class OllamaProviderTests(unittest.TestCase):
         result = provider.answer("What is the code?", self.evidence())
         self.assertEqual(result.answer, "CERULEAN")
         self.assertNotIn("Authorization", transport.calls[0]["headers"])
+        local_request = transport.calls[0]["payload"]
+        self.assertIsInstance(local_request["format"], dict)
+        self.assertEqual(
+            local_request["format"]["properties"]["outcome"]["enum"],
+            ["answer", "insufficient_evidence"],
+        )
+        self.assertEqual(
+            local_request["format"]["required"],
+            ["outcome", "answer", "citation_ids"],
+        )
+        self.assertFalse(local_request["format"]["additionalProperties"])
+        system_prompt = local_request["messages"][0]["content"]
+        self.assertIn('"outcome":"answer"', system_prompt)
+        self.assertIn('"outcome":"insufficient_evidence"', system_prompt)
+        self.assertIn("never put the factual answer in outcome", system_prompt)
+
+        hosted_transport = FakeTransport([payload])
+        hosted = OllamaProvider(
+            "https://models.example",
+            "secret",
+            "hosted-model",
+            mode="hosted",
+            max_retries=0,
+            transport=hosted_transport,
+        )
+        self.assertEqual(
+            hosted.answer("What is the code?", self.evidence()).answer,
+            "CERULEAN",
+        )
+        self.assertEqual(hosted_transport.calls[0]["payload"]["format"], "json")
+        self.assertEqual(
+            hosted_transport.calls[0]["headers"]["Authorization"], "Bearer secret"
+        )
+
         with self.assertRaises(ProviderAuthenticationError):
             OllamaProvider(
                 "https://models.example",
