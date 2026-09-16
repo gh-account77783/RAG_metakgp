@@ -1,0 +1,2 @@
+# Expired MCP test JWT: expired before the containing commit; credentials were rotated.
+c090f5ddbcb68950450a6ba3199f4283b2c105ad:.mcp.json:jwt:7

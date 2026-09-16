@@ -8,6 +8,8 @@ IFS=$'\n\t'
 OLLAMA_VERSION_EXPECTED="0.34.0"
 EMBEDDING_MODEL="bge-m3"
 ANSWER_MODEL="gemma4:e2b"
+LOCAL_ANSWER_TIMEOUT_SECONDS="${GRAPHMIND_P4_LOCAL_ANSWER_TIMEOUT_SECONDS:-180}"
+LOCAL_ANSWER_MAX_RETRIES="${GRAPHMIND_P4_LOCAL_ANSWER_MAX_RETRIES:-0}"
 INSTALL_OLLAMA=0
 PULL_MODELS=0
 WITH_HOSTED=0
@@ -36,6 +38,10 @@ Prerequisites:
 
 The local runs use only http://127.0.0.1:11434. Quality-gate failures are
 retained as reports and do not prevent the remaining controlled experiments.
+CPU inference defaults to a 180-second answer timeout with no retry so a slow
+request is measured once. Override these evaluation-only values with
+GRAPHMIND_P4_LOCAL_ANSWER_TIMEOUT_SECONDS and
+GRAPHMIND_P4_LOCAL_ANSWER_MAX_RETRIES.
 EOF
 }
 
@@ -63,6 +69,13 @@ while (($#)); do
     esac
     shift
 done
+
+[[ $LOCAL_ANSWER_TIMEOUT_SECONDS =~ ^[0-9]+$ ]] &&
+    ((LOCAL_ANSWER_TIMEOUT_SECONDS >= 1)) ||
+    fail "GRAPHMIND_P4_LOCAL_ANSWER_TIMEOUT_SECONDS must be a positive integer."
+[[ $LOCAL_ANSWER_MAX_RETRIES =~ ^[0-9]+$ ]] &&
+    ((LOCAL_ANSWER_MAX_RETRIES <= 5)) ||
+    fail "GRAPHMIND_P4_LOCAL_ANSWER_MAX_RETRIES must be an integer from 0 through 5."
 
 [[ ${EUID:-$(id -u)} -ne 0 ]] || fail "Run as the normal SSH user, not root."
 [[ -r /etc/os-release ]] || fail "Cannot identify the operating system."
@@ -216,6 +229,8 @@ fi
     printf 'python=%s\n' "$(python3 --version 2>&1)"
     printf 'ollama_cli=%s\n' "$OLLAMA_CLI_VERSION"
     printf 'ollama_server=%s\n' "$(curl -fsS http://127.0.0.1:11434/api/version)"
+    printf 'local_answer_timeout_seconds=%s\n' "$LOCAL_ANSWER_TIMEOUT_SECONDS"
+    printf 'local_answer_max_retries=%s\n' "$LOCAL_ANSWER_MAX_RETRIES"
     printf '\nCPU\n'; lscpu
     printf '\nMEMORY\n'; free -h
     printf '\nFILESYSTEM\n'; df -hT "$HOME"
@@ -270,6 +285,8 @@ run_evaluation() {
             GRAPHMIND_ANSWER_MODE=local
             GRAPHMIND_ANSWER_PROVIDER=ollama
             GRAPHMIND_ANSWER_MODEL="$ANSWER_MODEL"
+            GRAPHMIND_ANSWER_TIMEOUT_SECONDS="$LOCAL_ANSWER_TIMEOUT_SECONDS"
+            GRAPHMIND_ANSWER_MAX_RETRIES="$LOCAL_ANSWER_MAX_RETRIES"
             OLLAMA_BASE_URL=http://127.0.0.1:11434
             OLLAMA_API_KEY=
         )
