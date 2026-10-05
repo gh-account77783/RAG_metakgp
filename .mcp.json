@@ -1,10 +1,11 @@
 {
   "mcpServers": {
     "graphmind-remote": {
-      "type": "sse",
-      "url": "https://your-graphmind-host.example/mcp/sse",
-      "headers": {
-        "Authorization": "Bearer ${GRAPHMIND_API_KEY}"
+      "type": "http",
+      "url": "https://your-graphmind-host.example/mcp",
+      "oauth": {
+        "clientId": "graphmind-claude-code",
+        "callbackPort": 8765
       }
     }
   }

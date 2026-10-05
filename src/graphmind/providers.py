@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
-from .domain import Evidence, Outcome, ProviderAnswer
+from .domain import AdapterStatus, Evidence, Outcome, ProviderAnswer
 from .errors import (
     ModelNotFoundError,
     ProviderAuthenticationError,
@@ -31,6 +31,8 @@ from .http_client import (
 class AnswerProvider(Protocol):
     def answer(self, question: str, evidence: Sequence[Evidence]) -> ProviderAnswer: ...
 
+    def readiness(self) -> AdapterStatus: ...
+
 
 ANSWER_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -52,6 +54,9 @@ ANSWER_RESPONSE_SCHEMA: dict[str, Any] = {
 
 class ExtractiveProvider:
     """Offline diagnostic provider that returns one grounded source sentence."""
+
+    def readiness(self) -> AdapterStatus:
+        return AdapterStatus("answer-provider", True, "diagnostic")
 
     def answer(self, question: str, evidence: Sequence[Evidence]) -> ProviderAnswer:
         question_terms = set(re.findall(r"[\w'-]+", question.casefold()))
@@ -229,6 +234,12 @@ class OllamaProvider:
             "format": ANSWER_RESPONSE_SCHEMA if self.mode == "local" else "json",
             "options": {"temperature": 0, "num_predict": self.max_output_tokens},
         }
+        # The selected Gemma 4 E2B/Ollama preset otherwise spends the bounded
+        # output budget on message.thinking and can return no final JSON.
+        # Request the final structured answer; never parse a reasoning trace or
+        # enlarge the budget. Other models and hosted controls stay unchanged.
+        if self.mode == "local" and self.model == "gemma4:e2b":
+            body["think"] = False
         payload = self._request(body)
         try:
             message = payload["message"]
@@ -239,7 +250,16 @@ class OllamaProvider:
             raise ProviderResponseError("Answer provider returned an invalid response envelope") from exc
         return self._parse_payload(content)
 
-    def identity(self, *, resolve: bool = False) -> dict[str, object]:
+    def readiness(self) -> AdapterStatus:
+        try:
+            if self.mode == "hosted" and not self.api_key:
+                return AdapterStatus("answer-provider", False, "credential missing")
+            self.identity(resolve=True, timeout=min(self.timeout, 3.0))
+            return AdapterStatus("answer-provider", True, "ready")
+        except ProviderError:
+            return AdapterStatus("answer-provider", False, "unavailable")
+
+    def identity(self, *, resolve: bool = False, timeout: float | None = None) -> dict[str, object]:
         identity: dict[str, object] = {
             "provider": "ollama",
             "mode": self.mode,
@@ -258,7 +278,7 @@ class OllamaProvider:
                 f"{self.base_url}/api/tags",
                 headers=self._headers(),
                 payload=None,
-                timeout=self.timeout,
+                timeout=self.timeout if timeout is None else timeout,
             )
         except HttpClientError as exc:
             raise ProviderUnavailableError("Cannot resolve answer-model identity") from exc

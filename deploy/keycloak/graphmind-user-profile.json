@@ -1,0 +1,40 @@
+{
+  "attributes": [
+    {
+      "name": "username",
+      "displayName": "${username}",
+      "permissions": {"view": ["admin", "user"], "edit": ["admin", "user"]},
+      "validations": {
+        "length": {"min": 3, "max": 255},
+        "username-prohibited-characters": {},
+        "up-username-not-idn-homograph": {}
+      }
+    },
+    {
+      "name": "email",
+      "displayName": "${email}",
+      "required": {"roles": ["user"]},
+      "permissions": {"view": ["admin", "user"], "edit": ["admin", "user"]},
+      "validations": {"email": {}, "length": {"max": 255}}
+    },
+    {
+      "name": "graphmind_status",
+      "multivalued": false,
+      "permissions": {"view": ["admin"], "edit": ["admin"]},
+      "validations": {"options": {"options": ["active", "disabled", "deleted"]}}
+    },
+    {
+      "name": "graphmind_deleted_at",
+      "multivalued": false,
+      "permissions": {"view": ["admin"], "edit": ["admin"]},
+      "validations": {"length": {"max": 64}}
+    },
+    {
+      "name": "graphmind_credential_epoch",
+      "multivalued": false,
+      "permissions": {"view": ["admin"], "edit": ["admin"]},
+      "validations": {"pattern": {"pattern": "[0-9]+"}}
+    }
+  ],
+  "groups": []
+}

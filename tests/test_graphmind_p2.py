@@ -19,7 +19,7 @@ from graphmind.service import GraphMindApplication
 from graphmind.storage import MemoryGraphStore, MemoryVectorStore
 
 
-class FixtureProvider:
+class FixtureProvider(ExtractiveProvider):
     def answer(self, question, evidence):
         for item in evidence:
             if "CERULEAN" in item.excerpt or "AMBER" in item.excerpt:
@@ -31,13 +31,13 @@ class FixtureProvider:
         )
 
 
-class BadCitationProvider:
+class BadCitationProvider(ExtractiveProvider):
     def answer(self, question, evidence):
         return ProviderAnswer(Outcome.ANSWER, "unsupported", ("not-retrieved",))
 
 
 class FailingVectorStore(MemoryVectorStore):
-    def search(self, installation_id, query, limit):
+    def search(self, installation_id, query, limit, **kwargs):
         raise DependencyUnavailableError("vector unavailable")
 
 
@@ -335,9 +335,9 @@ class PublicationAndRetrievalTests(unittest.TestCase):
                 status_changes = []
                 set_status = app.metadata.set_version_status
 
-                def track_status(version_id, status, failure_code=None):
+                def track_status(version_id, status, failure_code=None, **kwargs):
                     status_changes.append(status)
-                    return set_status(version_id, status, failure_code)
+                    return set_status(version_id, status, failure_code, **kwargs)
 
                 app.metadata.set_version_status = track_status  # type: ignore[method-assign]
                 app.metadata.retry_job(submission.job.job_id)

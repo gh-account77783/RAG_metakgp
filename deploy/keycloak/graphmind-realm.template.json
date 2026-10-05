@@ -1,0 +1,194 @@
+{
+  "realm": "graphmind",
+  "enabled": true,
+  "displayName": "GraphMind",
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "verifyEmail": true,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "eventsEnabled": true,
+  "eventsExpiration": 604800,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "clientScopes": [
+    {
+      "name": "graphmind:read",
+      "description": "Read active GraphMind documents and grounded answers",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "Read this installation's active documents"
+      },
+      "protocolMappers": [
+        {
+          "name": "graphmind-subject",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {"access.token.claim": "true", "introspection.token.claim": "true"}
+        },
+        {
+          "name": "graphmind-resource-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "${GRAPHMIND_IDENTITY_MCP_AUDIENCE}",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "graphmind-introspection-client-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "graphmind-resource",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "graphmind-account-status",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "graphmind_status",
+            "claim.name": "graphmind_status",
+            "jsonType.label": "String",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "email",
+      "protocol": "openid-connect",
+      "attributes": {"include.in.token.scope": "true", "display.on.consent.screen": "true"},
+      "protocolMappers": [
+        {
+          "name": "email", "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper", "consentRequired": false,
+          "config": {
+            "user.attribute": "email", "claim.name": "email", "jsonType.label": "String",
+            "id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "email verified", "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper", "consentRequired": false,
+          "config": {
+            "user.attribute": "emailVerified", "claim.name": "email_verified", "jsonType.label": "boolean",
+            "id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "profile",
+      "protocol": "openid-connect",
+      "attributes": {"include.in.token.scope": "true", "display.on.consent.screen": "true"},
+      "protocolMappers": [
+        {
+          "name": "username", "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper", "consentRequired": false,
+          "config": {
+            "user.attribute": "username", "claim.name": "preferred_username", "jsonType.label": "String",
+            "id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "graphmind-web",
+      "name": "GraphMind browser",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${GRAPHMIND_IDENTITY_BROWSER_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${GRAPHMIND_PUBLIC_BASE_URL}/auth/callback"],
+      "webOrigins": ["${GRAPHMIND_PUBLIC_BASE_URL}"],
+      "defaultClientScopes": ["profile", "email", "graphmind:read"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${GRAPHMIND_PUBLIC_BASE_URL}/*"
+      }
+    },
+    {
+      "clientId": "graphmind-resource",
+      "name": "GraphMind resource introspection",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${GRAPHMIND_IDENTITY_RESOURCE_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "graphmind-admin",
+      "name": "GraphMind host account administration",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${GRAPHMIND_IDENTITY_ADMIN_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "graphmind-claude-code",
+      "name": "GraphMind Claude Code MCP",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:8765/callback"],
+      "webOrigins": [],
+      "defaultClientScopes": ["profile", "email", "graphmind:read"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "providerId": "google",
+      "enabled": false,
+      "trustEmail": false,
+      "storeToken": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "${GRAPHMIND_GOOGLE_CLIENT_ID}",
+        "clientSecret": "${GRAPHMIND_GOOGLE_CLIENT_SECRET}",
+        "defaultScope": "openid email profile"
+      }
+    }
+  ]
+}

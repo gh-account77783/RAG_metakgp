@@ -1,0 +1,25 @@
+{
+  "keycloakVersion": "26.7.3",
+  "realmSettings": {
+    "resetPasswordAllowed": true,
+    "resetCredentialsFlow": "graphmind reset credentials",
+    "attributes": {"actionTokenGeneratedByUserLifespan.reset-credentials": "900"}
+  },
+  "eventListener": "graphmind-password-revocation",
+  "authenticatorConfig": {
+    "alias": "graphmind-reset-email",
+    "config": {"force-login": "true"}
+  },
+  "flow": {
+    "alias": "graphmind reset credentials",
+    "description": "Existing local password only; email proof, expiring single-use link, fresh login; retain MFA",
+    "providerId": "basic-flow",
+    "topLevel": true,
+    "builtIn": false,
+    "authenticationExecutions": [
+      {"authenticator": "graphmind-reset-existing-password", "requirement": "REQUIRED", "priority": 10, "authenticatorFlow": false},
+      {"authenticator": "reset-credential-email", "authenticatorConfig": "graphmind-reset-email", "requirement": "REQUIRED", "priority": 20, "authenticatorFlow": false},
+      {"authenticator": "reset-password", "requirement": "REQUIRED", "priority": 30, "authenticatorFlow": false}
+    ]
+  }
+}

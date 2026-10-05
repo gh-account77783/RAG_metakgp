@@ -40,3 +40,22 @@ max_question_chars = 2000
 max_concurrent_queries = 2
 max_queued_queries = 4
 query_queue_timeout_seconds = 1.0
+
+# Public reader/MCP service and the bundled Keycloak realm. Production URLs use HTTPS.
+public_base_url = "https://rag.example.com"
+identity_issuer_url = "https://auth.example.com/realms/graphmind"
+identity_browser_client_id = "graphmind-web"
+identity_resource_client_id = "graphmind-resource"
+identity_admin_client_id = "graphmind-admin"
+identity_required_scope = "graphmind:read"
+identity_mcp_audience = "https://rag.example.com/mcp"
+identity_http_timeout_seconds = 10
+browser_cookie_secure = true
+browser_max_request_bytes = 16384
+browser_max_fetch_chars = 24000
+
+# Keep these values in a private dotenv or service-secret store, not this file:
+# GRAPHMIND_IDENTITY_BROWSER_CLIENT_SECRET
+# GRAPHMIND_IDENTITY_RESOURCE_CLIENT_SECRET
+# GRAPHMIND_IDENTITY_ADMIN_CLIENT_SECRET
+# GRAPHMIND_IDENTITY_FLOW_SIGNING_KEY (at least 32 random bytes)

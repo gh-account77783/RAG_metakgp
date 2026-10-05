@@ -1,0 +1,4 @@
+# Linux overlay for the CPython 3.13 candidate; apply alongside core-py313.txt.
+# Chroma requests uvicorn[standard], whose uvloop dependency is absent on Windows.
+# Ubuntu install/runtime acceptance is still required; this is not a Linux pass.
+uvloop==0.22.1

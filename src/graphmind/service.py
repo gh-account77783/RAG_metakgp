@@ -116,13 +116,20 @@ class GraphMindApplication:
         )
 
     def readiness(self):
+        """Host-local doctor includes the expensive manifest consistency audit."""
+        return (*self._storage_readiness(), self.audit_manifest())
+
+    def reader_readiness(self):
+        """Light dependency checks only; no per-document corpus traversal."""
+        return (*self._storage_readiness(), self.answers.provider.readiness())
+
+    def _storage_readiness(self):
         statuses = [
             self.files.readiness(),
             self.embedding.readiness(),
             self.vector.readiness(),
             self.graph.readiness(),
         ]
-        statuses.append(self.audit_manifest())
         return tuple(statuses)
 
     def audit_manifest(self) -> AdapterStatus:

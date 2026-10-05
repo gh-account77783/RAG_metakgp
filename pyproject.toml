@@ -7,11 +7,15 @@ name = "graphmind-rag-mcp"
 version = "0.1.0"
 description = "Self-hosted document RAG foundation with vector and document-graph retrieval"
 readme = { file = "README", content-type = "text/markdown" }
-requires-python = ">=3.11"
+requires-python = ">=3.13,<3.14"
 dependencies = [
   "chromadb==1.5.9",
+  "mcp==2.0.1",
   "neo4j==6.3.0",
+  "PyJWT==2.14.0",
   "pypdf==6.18.0",
+  "starlette==1.6.0",
+  "uvicorn==0.53.0",
 ]
 
 [project.optional-dependencies]
@@ -26,3 +30,14 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["graphmind*"]
+
+[tool.setuptools.data-files]
+"share/graphmind" = ["AUTH_AND_MCP.md", "DEPENDENCIES.md", "graphmind.example.toml", ".env.example"]
+"share/graphmind/constraints" = ["constraints/core-py313.txt", "constraints/linux-py313.txt"]
+"share/graphmind/deploy/keycloak" = ["deploy/keycloak/README.md", "deploy/keycloak/graphmind-realm.template.json", "deploy/keycloak/graphmind-user-profile.json", "deploy/keycloak/graphmind-recovery.json", "deploy/keycloak/nginx-recovery.conf.example"]
+"share/graphmind/deploy/keycloak/recovery-src/org/graphmind/keycloak" = ["deploy/keycloak/recovery-src/org/graphmind/keycloak/ExistingPasswordResetFactory.java", "deploy/keycloak/recovery-src/org/graphmind/keycloak/PasswordRevocationFactory.java"]
+"share/graphmind/deploy/keycloak/recovery-src/META-INF/services" = ["deploy/keycloak/recovery-src/META-INF/services/org.keycloak.authentication.AuthenticatorFactory", "deploy/keycloak/recovery-src/META-INF/services/org.keycloak.events.EventListenerProviderFactory"]
+"share/graphmind/deploy/keycloak/themes/graphmind/email" = ["deploy/keycloak/themes/graphmind/email/theme.properties"]
+"share/graphmind/deploy/keycloak/themes/graphmind/email/messages" = ["deploy/keycloak/themes/graphmind/email/messages/messages_en.properties"]
+"share/graphmind/deploy/acceptance" = ["deploy/acceptance/README.md"]
+"share/graphmind/tools" = ["tools/run_real_acceptance.py", "tools/mcp_acceptance.py", "tools/build_keycloak_recovery.py"]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 from dataclasses import asdict, replace
@@ -65,6 +66,20 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser(
         "embedding-status", help="Compare configured and active index embedding fingerprints"
     )
+
+    serve_parser = subcommands.add_parser(
+        "serve", help="Run the authenticated browser and Streamable HTTP MCP service"
+    )
+    serve_parser.add_argument("--host", default="127.0.0.1")
+    serve_parser.add_argument("--port", type=int, default=8000)
+
+    accounts_parser = subcommands.add_parser(
+        "accounts", help="Host-only Keycloak account administration"
+    )
+    accounts_parser.add_argument(
+        "action", choices=("list", "disable", "enable", "delete", "restore")
+    )
+    accounts_parser.add_argument("reference", nargs="?", help="Account UUID or exact email")
 
     query_parser = subcommands.add_parser("query", help="Query active documents")
     query_parser.add_argument("question")
@@ -169,6 +184,40 @@ def main(argv: list[str] | None = None) -> None:
         settings = _settings(args)
         if args.command == "config":
             print(json.dumps(settings.diagnostics(), indent=2, ensure_ascii=False))
+            return
+        if args.command == "accounts":
+            from .identity import KeycloakAdminClient
+
+            settings.validate(require_identity_admin_secret=True)
+            client = KeycloakAdminClient(settings)
+            if args.action == "list":
+                output = asyncio.run(client.list_accounts())
+            else:
+                if not args.reference:
+                    parser.error("accounts action requires an account UUID or exact email")
+                output = asyncio.run(client.set_state(args.reference, args.action))
+            print(json.dumps(output, indent=2, ensure_ascii=False))
+            return
+        if args.command == "serve":
+            if args.port not in range(1, 65_536):
+                parser.error("--port must be between 1 and 65535")
+            settings.validate(require_identity_secrets=True)
+            from .product_server import create_product_server
+
+            try:
+                import uvicorn
+            except ImportError as exc:
+                raise GraphMindError("The server runtime is not installed") from exc
+            with GraphMindApplication(settings) as product_application:
+                _, asgi = create_product_server(settings, product_application)
+                uvicorn.run(
+                    asgi,
+                    host=args.host,
+                    port=args.port,
+                    proxy_headers=True,
+                    forwarded_allow_ips="127.0.0.1",
+                    access_log=False,  # Protocol access logs include OAuth callback query credentials.
+                )
             return
         dataset = None
         materialized = None

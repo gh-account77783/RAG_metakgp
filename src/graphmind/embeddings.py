@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+import threading
 from collections.abc import Sequence
 from typing import Any, Protocol
 
@@ -108,6 +109,7 @@ class OllamaEmbedding:
         self.batch_size = batch_size
         self.transport = transport or UrllibJsonTransport()
         self._identity: tuple[str, str] | None = None
+        self._identity_lock = threading.RLock()
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -124,11 +126,10 @@ class OllamaEmbedding:
         )
 
     def _resolve_identity(self) -> tuple[str, str]:
-        if self._identity is not None:
-            return self._identity
-        if self.configured_revision != "auto":
-            self._identity = (self.configured_revision, self.configured_precision)
-            return self._identity
+        with self._identity_lock:
+            return self._validate_identity()
+
+    def _validate_identity(self) -> tuple[str, str]:
         try:
             payload = self.transport.request_json(
                 "GET",
@@ -159,15 +160,22 @@ class OllamaEmbedding:
         digest = str(selected.get("digest", "")).strip()
         details = selected.get("details") if isinstance(selected.get("details"), dict) else {}
         actual_precision = str(details.get("quantization_level", "unknown")).strip() or "unknown"
+        if actual_precision.casefold() == "unknown":
+            raise EmbeddingResponseError("Embedding model metadata is missing its precision")
         if len(digest) != 64 or not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
             raise EmbeddingResponseError("Embedding model metadata is missing a full digest")
+        if self.configured_revision != "auto" and digest.casefold() != self.configured_revision.casefold():
+            raise EmbeddingResponseError("Embedding digest does not match the configured revision")
         if self.configured_precision != "auto" and _precision_family(
             self.configured_precision
         ) != _precision_family(actual_precision):
             raise EmbeddingResponseError(
                 "Embedding precision does not match the configured precision"
             )
-        self._identity = (digest.casefold(), actual_precision)
+        resolved = (digest.casefold(), _precision_family(actual_precision))
+        if self._identity is not None and resolved != self._identity:
+            raise EmbeddingResponseError("Embedding model identity changed; restart and explicitly reindex")
+        self._identity = resolved
         return self._identity
 
     @property
@@ -218,6 +226,7 @@ class OllamaEmbedding:
         result: list[list[float]] = []
         for start in range(0, len(texts), self.batch_size):
             batch = list(texts[start : start + self.batch_size])
+            self._resolve_identity()
             try:
                 payload = self.transport.request_json(
                     "POST",
@@ -236,7 +245,10 @@ class OllamaEmbedding:
                 raise EmbeddingUnavailableError("Embedding request timed out") from exc
             except HttpClientError as exc:
                 raise EmbeddingUnavailableError("Embedding runtime is unavailable") from exc
-            result.extend(self._validate_vectors(payload, len(batch)))
+            vectors = self._validate_vectors(payload, len(batch))
+            # Reject vectors if the mutable runtime tag changed during inference.
+            self._resolve_identity()
+            result.extend(vectors)
         return result
 
     def embed(self, text: str) -> list[float]:

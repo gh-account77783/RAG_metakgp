@@ -15,6 +15,7 @@ from .errors import (
     DocumentBusyError,
     DocumentNotFoundError,
     JobQueueFullError,
+    JobLeaseError,
     ManifestUnavailableError,
     MigrationBusyError,
     MigrationError,
@@ -309,9 +310,12 @@ class MetadataStore:
         return self._version(row) if row else None
 
     def set_version_status(
-        self, version_id: str, status: VersionStatus, failure_code: str | None = None
+        self, version_id: str, status: VersionStatus, failure_code: str | None = None,
+        *, job: Job | None = None,
     ) -> None:
         with self.transaction() as connection:
+            if job is not None:
+                self._assert_job_lease(connection, job)
             connection.execute(
                 "UPDATE versions SET status = ?, failure_code = ? WHERE version_id = ?",
                 (status.value, failure_code, version_id),
@@ -353,8 +357,11 @@ class MetadataStore:
                 ).fetchone()[0]
             )
 
-    def publish_version(self, version_id: str) -> None:
+    def publish_version(self, version_id: str, *, job: Job) -> None:
         with self.transaction() as connection:
+            self._assert_job_lease(connection, job)
+            if job.version_id != version_id:
+                raise JobLeaseError("Job does not own the version being published")
             row = connection.execute(
                 """
                 SELECT v.document_id, v.expected_chunk_count, d.deleted_at
@@ -459,6 +466,34 @@ class MetadataStore:
                 "SELECT * FROM chunks WHERE version_id = ? ORDER BY ordinal", (version_id,)
             ).fetchall()
         return [self._chunk(row) for row in rows]
+
+    def iter_chunks_for_version(self, version_id: str) -> Iterator[Chunk]:
+        """Stream bounded reader output without materializing a whole version."""
+        with self.connection() as connection:
+            cursor = connection.execute(
+                "SELECT * FROM chunks WHERE version_id = ? ORDER BY ordinal", (version_id,)
+            )
+            for row in cursor:
+                yield self._chunk(row)
+
+    @staticmethod
+    def _assert_job_lease(connection: sqlite3.Connection, job: Job) -> None:
+        now = utc_now()
+        row = connection.execute(
+            """
+            SELECT 1 FROM jobs j JOIN writer_lock w ON w.singleton = 1
+            WHERE j.job_id = ? AND j.status = 'running' AND j.lease_owner = ?
+              AND j.attempt_count = ? AND j.lease_expires_at > ?
+              AND w.owner = j.lease_owner AND w.lease_expires_at > ?
+            """,
+            (job.job_id, job.lease_owner, job.attempt_count, now, now),
+        ).fetchone()
+        if row is None:
+            raise JobLeaseError("Ingestion writer ownership or job attempt was lost")
+
+    def assert_job_lease(self, job: Job) -> None:
+        with self.connection() as connection:
+            self._assert_job_lease(connection, job)
 
     def put_job(self, job: Job, *, max_queued_jobs: int | None = None) -> Job:
         now = utc_now()
@@ -656,10 +691,25 @@ class MetadataStore:
                 (owner,),
             )
 
-    def heartbeat(self, job_id: str, owner: str, lease_seconds: int) -> bool:
+    def heartbeat(self, job_id: str, owner: str, lease_seconds: int,
+                  *, job: Job | None = None) -> bool:
         now = utc_now()
         expires = utc_after(lease_seconds)
         with self.transaction() as connection:
+            if job is not None:
+                try:
+                    self._assert_job_lease(connection, job)
+                except JobLeaseError:
+                    return False
+            valid = connection.execute(
+                """
+                SELECT 1 FROM jobs j JOIN writer_lock w ON w.singleton = 1
+                WHERE j.job_id = ? AND j.status = 'running' AND j.lease_owner = ?
+                  AND j.lease_expires_at > ? AND w.owner = ? AND w.lease_expires_at > ?
+                """, (job_id, owner, now, owner, now),
+            ).fetchone()
+            if valid is None:
+                return False
             writer = connection.execute(
                 """
                 UPDATE writer_lock SET lease_expires_at = ?
@@ -703,8 +753,11 @@ class MetadataStore:
             ).fetchone()
         return self._job(updated)
 
-    def finish_job(self, job_id: str, owner: str, *, succeeded: bool, error_code: str | None = None) -> None:
+    def finish_job(self, job_id: str, owner: str, *, succeeded: bool,
+                   error_code: str | None = None, job: Job | None = None) -> None:
         with self.transaction() as connection:
+            if job is not None:
+                self._assert_job_lease(connection, job)
             connection.execute(
                 """
                 UPDATE jobs SET status = ?,

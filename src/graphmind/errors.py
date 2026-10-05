@@ -157,5 +157,45 @@ class QueryCancelledError(GraphMindError):
     code = "query_cancelled"
 
 
+class ReaderQueryError(GraphMindError):
+    """A typed failed query, never a successful answer or abstention."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__("The query could not be completed")
+        self.code = code
+
+
 class EvaluationError(GraphMindError):
     code = "evaluation_error"
+
+
+class IdentityError(GraphMindError):
+    code = "identity_error"
+
+
+class IdentityUnavailableError(IdentityError):
+    code = "identity_unavailable"
+
+
+class IdentityGrantRejectedError(IdentityError):
+    code = "identity_grant_rejected"
+
+
+class IdentityResponseError(IdentityError):
+    code = "invalid_identity_response"
+
+
+class AuthenticationRequiredError(IdentityError):
+    code = "authentication_required"
+
+
+class AuthorizationDeniedError(IdentityError):
+    code = "authorization_denied"
+
+
+class AccountNotFoundError(IdentityError):
+    code = "account_not_found"
+
+
+class AccountStateError(IdentityError):
+    code = "invalid_account_state"

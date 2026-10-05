@@ -16,8 +16,10 @@ from .domain import Chunk, Document, Job, JobStatus, Version, VersionStatus
 from .errors import (
     DocumentBusyError,
     DocumentNotFoundError,
+    DocumentTooLargeError,
     EmptyDocumentError,
     GraphMindError,
+    JobLeaseError,
     PathValidationError,
     PublicationError,
     UnsupportedFileError,
@@ -223,9 +225,12 @@ class IngestionService:
         if suffix not in SUPPORTED_MEDIA_TYPES:
             raise UnsupportedFileError("Supported formats are PDF, DOCX, TXT, Markdown, and CSV")
         try:
-            raw = resolved.read_bytes()
+            with resolved.open("rb") as stream:
+                raw = stream.read(self.settings.max_file_bytes + 1)
         except OSError as exc:
             raise PathValidationError("Input file is unreadable") from exc
+        if len(raw) > self.settings.max_file_bytes:
+            raise DocumentTooLargeError("Input exceeds the configured file byte limit")
         return resolved, raw, suffix
 
     def prepare_txt_import(self, source: Path) -> ImportSubmission:
@@ -386,8 +391,9 @@ class IngestionService:
         return DeleteSubmission(tombstoned, stored_job)
 
     def _progress(self, job: Job, value: int) -> None:
-        if job.lease_owner:
-            self.metadata.update_job_progress(job.job_id, job.lease_owner, value)
+        self.metadata.assert_job_lease(job)
+        if not self.metadata.update_job_progress(job.job_id, job.lease_owner, value):
+            raise JobLeaseError("The ingestion job lease was lost")
 
     def _process_import(self, job: Job) -> None:
         document = self.metadata.document(job.document_id)
@@ -414,11 +420,12 @@ class IngestionService:
                 return
             raise PublicationError("The active version does not match both retrieval stores")
         try:
-            self.metadata.set_version_status(version.version_id, VersionStatus.INDEXING)
+            self.metadata.set_version_status(version.version_id, VersionStatus.INDEXING, job=job)
             self._progress(job, 10)
             self.vector.upsert_version(self.installation_id, chunks)
             self._progress(job, 40)
             self._fail("after_vector")
+            self.metadata.assert_job_lease(job)
             self.graph.upsert_version(self.installation_id, document, version, chunks)
             self._progress(job, 70)
             self._fail("after_graph")
@@ -433,28 +440,34 @@ class IngestionService:
                 )
             self._progress(job, 90)
             self._fail("before_publish")
-            self.metadata.publish_version(version.version_id)
+            self.metadata.publish_version(version.version_id, job=job)
             self._progress(job, 99)
             self._fail("after_publish")
         except Exception as exc:
+            if isinstance(exc, JobLeaseError):
+                raise  # A stale attempt must not change its successor's metadata.
             current = self.metadata.document(job.document_id)
             if current is None or current.active_version_id != job.version_id:
                 code = exc.code if isinstance(exc, GraphMindError) else "internal_error"
-                self.metadata.set_version_status(job.version_id, VersionStatus.FAILED, code)
+                self.metadata.set_version_status(job.version_id, VersionStatus.FAILED, code, job=job)
             raise
 
     def _process_delete(self, job: Job) -> None:
+        self.metadata.assert_job_lease(job)
         self.vector.delete_document(self.installation_id, job.document_id)
         self._progress(job, 35)
         self._fail("after_delete_vector")
+        self.metadata.assert_job_lease(job)
         self.graph.delete_document(self.installation_id, job.document_id)
         self._progress(job, 70)
         self._fail("after_delete_graph")
+        self.metadata.assert_job_lease(job)
         self.files.delete_document(job.document_id)
         self._progress(job, 99)
         self._fail("after_delete_files")
 
     def process_job(self, job: Job) -> None:
+        self.metadata.assert_job_lease(job)
         if job.operation in {"import_txt", "import_document"}:
             self._process_import(job)
             return

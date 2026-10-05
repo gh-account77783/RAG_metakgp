@@ -1,6 +1,6 @@
 # GraphMind
 
-GraphMind is being generalized into a self-hosted document RAG service backed by Chroma and a Neo4j document graph. The installable `graphmind` package currently provides the P1-P4 foundation: durable SQLite metadata and jobs, validated configuration, isolated PDF/DOCX/TXT/Markdown/CSV extraction, staged dual-store publication, immutable replacement versions, tombstone-first deletion, bounded graph retrieval, semantic BGE-M3 embeddings, local or hosted Ollama-compatible answer generation, and verified citations.
+GraphMind is being generalized into a self-hosted document RAG service backed by Chroma and a Neo4j document graph. The installable `graphmind` package provides the P1-P4 data and retrieval foundation plus a P5/P6 browser and remote-MCP implementation candidate. The candidate uses one Keycloak account/token authority, active-account checks, a shared reader service, and the official MCP Python SDK's stateless Streamable HTTP server.
 
 The original MetaKGP crawler and reasoning code remains in the repository as a legacy test prototype. It is not part of the generic package path and is not intended for the final user distribution.
 
@@ -24,7 +24,14 @@ Text extraction runs in a time-limited subprocess. PDF OCR and password-protecte
 
 Deletion removes a document from the active manifest before its durable cleanup job touches Chroma, Neo4j, or private originals. A failed cleanup remains retryable with `graphmind retry <job-id>`. Reindexing creates a new immutable version when parser, chunker, embedding configuration, or document content changes, and the previous version remains active until both retrieval stores verify the replacement.
 
-The deterministic hash embedding remains available only as an offline diagnostic adapter. The P4 production candidate uses `BAAI/bge-m3` through same-host Ollama and fingerprints the full model digest, runtime-reported precision, and 1024-dimensional output in every index. Changing that identity requires explicit reindexing. The public reader UI, authenticated remote MCP service, and release installers belong to later phases.
+The deterministic hash embedding remains available only as an offline diagnostic adapter. The P4 production candidate uses `BAAI/bge-m3` through same-host Ollama and fingerprints the full model digest, runtime-reported precision, and 1024-dimensional output in every index. Changing that identity requires explicit reindexing. The browser/MCP candidate now exists; real identity-provider/client acceptance and release installers remain later gates.
+
+The selected local `gemma4:e2b` preset requests `think: false` for its bounded
+structured answer: otherwise reasoning can exhaust the output-token limit before
+any final JSON arrives. Reasoning traces are not treated as answers or citations.
+Other model and hosted thinking controls are unchanged. Configure CPU request
+timeouts explicitly; total provider attempts must fit inside the proxy's read
+budget. These settings and green contract tests do not establish model quality.
 
 ## P4 model and retrieval evaluation
 
@@ -76,10 +83,17 @@ bash test-deploy.sh
 
 It does not deploy the legacy web server, expose a public port, change AWS security groups, or validate Google/OIDC, MCP authorization, local inference, load, or backup/restore. Test state, generated credentials, logs, and artifacts stay under `~/.local/state/graphmind-test-deploy`, outside the repository. Add a hosted-model key to the private environment file reported by the first run, then use `bash test-deploy.sh --with-hosted-model` to include the optional hosted-provider contract.
 
-## Runtime contract
+## Product and compatibility contracts
 
-The public application boundary is `GoTReasoningEngine.reason(query)`, which
-returns:
+The supported public entry point is `graphmind serve`: authenticated browser
+routes and stateless Streamable HTTP MCP tools share the packaged reader service.
+It reads the active SQLite manifest, retrieves eligible Chroma evidence and
+Neo4j document-reference expansion, and checks authorization/source eligibility
+again before delivery. Readers cannot run host administration or access files
+by path. An empty installation is valid and answers with insufficient evidence.
+
+The development-only legacy compatibility adapter `GoTReasoningEngine.reason(query)`
+retains these keys; it is not the public product boundary:
 
 ```python
 {"answer": str, "path": list[str], "knowledge": str, "verification": dict}
@@ -93,21 +107,30 @@ the same cleaned corpus.
 
 ## What is included
 
-- A polite MetaKGP crawler and Markdown cleaner.
-- Persistent ChromaDB embeddings using `BAAI/bge-large-en-v1.5`.
-- A Neo4j page graph with wiki links, fuzzy entity links, and semantic links.
-- A LangGraph reasoning workflow with a bounded traversal loop and MoE verification.
-- A Streamlit chat interface and an authenticated FastMCP/SSE server.
-- A reproducible synthetic-QA evaluation runner.
+The package contains five-format text ingestion, durable fenced jobs, active-version
+Chroma/Neo4j retrieval, Ollama BGE-M3 embedding identity checks, local/hosted
+answer providers, a verified browser reader and official-SDK remote MCP candidate.
+Operator templates, auth/bootstrap/acceptance guides and network-check tools ship
+under the installed environment's `share/graphmind` directory.
+
+The checkout separately retains the legacy MetaKGP crawler/cleaner, BGE-large
+indexer, page/fuzzy/semantic graph, LangGraph/MoE experiment and synthetic-QA
+runner. These development assets and generated stores are not the generic
+product pipeline or bundled user data.
 
 ## Project layout
 
 ```text
 .
-├── app.py                       # Streamlit chat entry point
-├── mcp_server.py                # FastAPI + FastMCP entry point
-├── run_eval_300.py              # Dataset generation and evaluation runner
-├── requirements.txt
+├── app.py                       # Retired unauthenticated prototype guard
+├── mcp_server.py                # Retired legacy MCP prototype guard
+├── run_eval_100.py              # Dataset generation and evaluation runner
+├── src/graphmind/                # Installable product package
+├── AUTH_AND_MCP.md               # Current public-boundary contract
+├── deploy/keycloak/              # Realm/profile/bootstrap assets
+├── deploy/acceptance/            # Real-service acceptance matrix
+├── tools/                       # Package and network verification commands
+├── requirements.txt             # Legacy development dependencies
 ├── .env.example                 # Configuration template; never commit .env
 ├── Crawler/                     # Ingestion package
 │   ├── crawler.py               # Page discovery, scraping, link extraction
@@ -123,20 +146,17 @@ the same cleaned corpus.
 │   ├── neo4j_setup.py
 │   └── neo4j_utils.py
 ├── tests/                       # Fast unit tests; no external services
-├── docs/ARCHITECTURE.md
-├── docs/deployment/              # AWS deployment guide
-├── docs/notes/                   # Historical engineering notes
 ├── artifacts/                    # Generated/debug material; not application source
 │   ├── backups/                  # Transfer archives for Chroma and Neo4j
 │   ├── crawler-debug/            # Saved crawler diagnostic HTML
 │   └── evaluation/               # Generated datasets, checkpoints, and reports
 ├── VectorStore/                 # Local Chroma persistence (generated/runtime data)
-└── AWS_DEPLOYMENT.md            # EC2 deployment reference
+└── test-deploy.sh                # Historical isolated P1-P3 test harness
 ```
 
-`Crawler/cleaned_wiki.jsonl` and `VectorStore/` may already exist in this checkout. They are data artifacts, not source code. The application requires both a populated vector store and a populated Neo4j database before it can answer questions.
+`Crawler/cleaned_wiki.jsonl` and `VectorStore/` may already exist in this checkout. They are data artifacts, not source code. Only the legacy prototype requires its matching corpus/stores. The generic package uses separate private runtime roots and an active manifest; do not point it at legacy stores.
 
-## Architecture
+## Legacy development architecture (not the browser/MCP pipeline)
 
 ```text
 MetaKGP wiki
@@ -153,21 +173,21 @@ MetaKGP wiki
                                   │
               retrieve → explore → synthesize → verify
                                   │
-                        Streamlit UI / MCP tools
+                    Legacy reason() compatibility adapter
 ```
 
-The reasoning engine begins with three Chroma matches, explores only graph neighbours, and limits traversal to seven reasoning decisions. It sends the collected context to three independent checks—source support, hallucination detection, and logical consistency—before a judge accepts an answer.
+The legacy reasoning engine begins with three Chroma matches, explores only graph neighbours, and limits traversal to seven reasoning decisions. It sends the collected context to three independent checks—source support, hallucination detection, and logical consistency—before a judge accepts an answer.
 
-## Prerequisites
+## Legacy MetaKGP prototype prerequisites
 
 - Python 3.10 or later.
 - A running Neo4j instance (Neo4j 5 recommended).
 - An Ollama Cloud API key with access to `gemma4:31b-cloud`.
 - Optional CUDA-capable PyTorch installation for faster embedding/indexing work.
 
-On Windows, the evaluation runner imports `pyarrow.dataset` before embedding libraries to avoid a DLL load-order issue. Keep that import first in `run_eval_300.py`.
+On Windows, the evaluation runner imports `pyarrow.dataset` before embedding libraries to avoid a DLL load-order issue. Keep that import first in `run_eval_100.py`.
 
-## Local setup
+## Legacy MetaKGP prototype setup
 
 From the repository root:
 
@@ -187,16 +207,12 @@ NEO4J_URI="bolt://localhost:7687"
 NEO4J_USERNAME="neo4j"
 NEO4J_PASSWORD="..."
 
-# Required only by the remote MCP service
-GRAPHMIND_API_KEY="a-long-random-value"
-GOOGLE_CLIENT_ID="..."
-GOOGLE_CLIENT_SECRET="..."
-GOOGLE_REDIRECT_URI="http://localhost:8000/callback"
+# The legacy prototype is local test code. It is not the authenticated product server.
 ```
 
 Do not commit `.env`, API keys, OAuth tokens, Neo4j passwords, or a personalized `.mcp.json`.
 
-## Build the knowledge base
+## Build the legacy MetaKGP test knowledge base
 
 Run these stages in order when creating a fresh corpus. Each command is launched from the repository root.
 
@@ -223,117 +239,76 @@ The indexer skips a page URL that already exists in Chroma. If you substantially
 Treat a corpus refresh as a coordinated operation: rebuild or restore Chroma
 and Neo4j from the same `cleaned_wiki.jsonl` input before serving requests.
 
-## How to Run & Use GraphMind
+## How to run the P5/P6 candidate
 
-### 1. Run RAG Only (Streamlit UI or Python CLI)
+The supported public process is the installed `graphmind` package. The old
+Streamlit, static bearer key, direct Google-token, SSE, and query-token paths
+are retired because they bypass current account and revocation policy.
 
-Ensure Neo4j and Ollama settings are configured in `.env`, then start the Streamlit web application:
-
-```powershell
-streamlit run app.py
-```
-
-- **How to use**: Open the URL printed by Streamlit (`http://localhost:8501`). Type your MetaKGP campus question in the chat bar. Expand **View Reasoning Trace** to inspect the interactive thought graph and Mixture-of-Experts (MoE) verifier breakdown.
-- **Python CLI / Programmatic Usage**:
-  ```python
-  from RAG.got_engine import GoTReasoningEngine
-
-  engine = GoTReasoningEngine()
-  result = engine.reason("What is MetaKGP?")
-  print("Answer:", result["answer"])
-  print("Graph Path:", result["path"])
-  print("Verification:", result["verification"])
-  ```
-
----
-
-### 2. Run MCP + RAG Locally (with Authentication)
-
-The MCP server exposes GraphMind's reasoning engine to external AI clients (e.g. Cursor, Claude Desktop, custom agents).
-
-#### Start the MCP Server:
-- **For SSE (Server-Sent Events) HTTP Development**:
-  ```powershell
-  python mcp_server.py sse
-  ```
-  *(Serves FastAPI on `http://127.0.0.1:8000/mcp`)*
-- **For Stdio Mode** (Desktop MCP Hosts):
-  ```powershell
-  python mcp_server.py
-  ```
-
-#### Authentication Options:
-1. **Static Bearer Token (`GRAPHMIND_API_KEY`)**:
-   Set `GRAPHMIND_API_KEY` in `.env` (e.g., `GRAPHMIND_API_KEY="my-secret-key"`). Pass `Authorization: Bearer my-secret-key` in HTTP headers.
-2. **Google OAuth 2.0 Login**:
-   Navigate to `http://localhost:8000/login` in your browser, log in with Google, and copy the returned short-lived token.
-
-#### How to Connect from an MCP Client:
-Add the following to your client config (e.g., `claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "graphmind-local": {
-      "type": "sse",
-      "url": "http://127.0.0.1:8000/mcp/sse",
-      "headers": {
-        "Authorization": "Bearer <YOUR_GRAPHMIND_API_KEY>"
-      }
-    }
-  }
-}
-```
-
----
-
-### 3. Deploy on AWS EC2 (Automated Deployment)
-
-GraphMind includes an automated deployment script ([deploy.sh](file:///D:/programming/RAG_and_MCP_examples/deploy.sh)) to run FastAPI, Uvicorn, Nginx (with HTTPS SSL), Neo4j (Docker), and ChromaDB on a single AWS Ubuntu 22.04 LTS instance.
-
-#### Step-by-Step AWS Deployment:
-
-1. **Provision EC2 Instance & DNS**:
-   - Launch Ubuntu 22.04 LTS instance (`t3.medium` or `t3.large`, 30GB storage).
-   - Open Security Group Inbound ports: `22` (SSH), `80` (HTTP), `443` (HTTPS).
-   - Point your domain A-record (e.g. `graphmind.your-domain.com`) to your EC2 Public IP.
-
-2. **Upload Local Vector Database & Environment**:
-   ```bash
-   # On local machine:
-   tar -czvf vector_store.tar.gz VectorStore
-   scp -i your-key.pem vector_store.tar.gz .env ubuntu@<YOUR-EC2-IP>:/home/ubuntu/
-   ```
-
-3. **Execute Auto-Deployment Script on EC2**:
-   ```bash
-   # Connect to EC2 instance:
-   ssh -i your-key.pem ubuntu@<YOUR-EC2-IP>
-
-   # Clone repo, extract data, and run script:
-   git clone https://github.com/gh-account77783/RAG_metakgp.git RAG_and_MCP_examples
-   mkdir -p RAG_and_MCP_examples/VectorStore
-   tar -xzvf vector_store.tar.gz -C RAG_and_MCP_examples/
-   mv .env RAG_and_MCP_examples/
-
-   cd RAG_and_MCP_examples
-   chmod +x deploy.sh
-   sudo ./deploy.sh graphmind.your-domain.com
-   ```
-
-For full architectural details, see the [AWS Deployment Guide](docs/deployment/AWS_DEPLOYMENT.md).
-
-## Evaluate the system
+Install the package in a virtual environment, copy `.env.example` to a private
+`.env`, and configure the GraphMind, Neo4j, Chroma, model, and Keycloak values.
+The public base URL must use HTTPS unless it is a loopback development URL.
+Secure cookies cannot be disabled for public HTTPS. Keep the account-admin secret
+out of the reader environment and use a separate host-account CLI environment.
 
 ```powershell
-python run_eval_300.py
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --constraint constraints/core-py313.txt ".[test]"
+Copy-Item .env.example .env
+# Load the private environment by your preferred secret mechanism.
+graphmind --dotenv .env serve --host 127.0.0.1 --port 8000
+```
+
+The browser reader is at `/`; the remote MCP endpoint is `/mcp`. Browser users
+need only a browser. Remote MCP users need a compatible client, with Claude
+Code CLI as the first required acceptance client. Both paths use accounts and
+tokens issued by the same Keycloak realm. Google is an upstream identity
+provider; GraphMind does not accept Google ID tokens as resource credentials.
+
+The MCP tools are `search_documents`, `fetch_document`, and `ask`.
+`search_documents` and `fetch_document` let the client use its own model;
+`ask` uses the server's configured answer provider. All content routes require
+a verified, active account with `graphmind:read` and the exact `/mcp` audience.
+See [AUTH_AND_MCP.md](AUTH_AND_MCP.md) for the route, token, account-state, and
+Claude Code candidate contracts.
+
+Host operators manage account state locally:
+
+```powershell
+graphmind accounts list
+graphmind accounts disable reader@example.test
+graphmind accounts enable reader@example.test
+graphmind accounts delete reader@example.test
+graphmind accounts restore reader@example.test
+```
+
+`delete` is a retained soft deletion: it disables the account, records deleted
+status, and revokes sessions without erasing its email or credential record.
+Readers cannot upload documents or change configuration. Host-only document
+administration continues through the existing `graphmind import`, worker,
+status, reindex, and delete commands.
+
+`deploy.sh` is deliberately retired because it installed the superseded auth
+path. Internet-facing Ubuntu service installation, reverse proxy, Keycloak,
+PostgreSQL, SMTP, backup, and reboot automation belong to the P7 operator
+release. Do not use the current candidate as a production deployment. P5/P6
+still require real Keycloak/PostgreSQL, SMTP, Google login, Claude Code, and
+independent SDK acceptance on the EC2 test host after review. Follow the tracked
+[same-candidate acceptance matrix](deploy/acceptance/README.md); unavailable
+inputs or already-issued-token network calls cannot substitute for those gates.
+
+## Evaluate the legacy prototype
+
+```powershell
+python run_eval_100.py
 ```
 
 The runner creates synthetic question/answer pairs from cleaned pages when no dataset is present, evaluates the configured number of cases, checkpoints progress after each successful evaluation, and writes JSON and Markdown reports under `artifacts/evaluation/`. It is intentionally sequential by default to respect Ollama Cloud rate limits.
 
 Evaluation uses an LLM-generated dataset and LLM-as-a-judge scoring. Treat the results as regression indicators, not an independent factual benchmark. Add human-reviewed and out-of-domain cases before making production accuracy claims.
 
-`run_eval_300.py` and its artifact filenames are legacy names. The current
+`run_eval_100.py` and its artifact filenames belong to the legacy prototype. The current
 number of evaluated cases is controlled by `NUM_QUESTIONS` in that script;
 check its value rather than inferring the count from the filename.
 
@@ -343,17 +318,35 @@ check its value rather than inferring the count from the filename.
 python -m unittest discover -s tests -v
 ```
 
-The unit tests do not contact Neo4j, Chroma, or Ollama. Before a release, also run the service entry points against configured local dependencies and perform at least one real query through the UI or MCP endpoint.
+Use CPython 3.13 (`>=3.13,<3.14`) and install with `constraints/core-py313.txt`.
+The offline suite uses synthetic identities/adapters and temporary stores; it also
+runs actual local Chroma subprocess and host OS-lock regressions. It does not
+contact live Neo4j, Keycloak, SMTP, Google or Ollama. Node is test-only, required
+for the executable browser-script network/JSON-failure regression.
 
-## Operational notes
+```powershell
+python tools/verify_package.py
+```
+
+This builds an allowlisted snapshot, inspects wheel/sdist, creates a clean
+temporary venv, installs constrained dependencies, checks imports outside the
+checkout and runs the installed-wheel suite. CI does this on hosted Ubuntu and
+Windows. The separate manual `real-stores` workflow actually tests disposable
+Chroma/Neo4j; it is not identity/client/model or native-service acceptance. A
+skipped/unavailable integration is not a pass. No current CI run is claimed by
+changing the workflow. See [the acceptance guide](deploy/acceptance/README.md)
+for opt-in real tests and the remaining manual matrix.
+
+## Operational notes (legacy development assets)
 
 - The crawler waits between requests and restricts itself to MetaKGP content pages.
 - Course URLs containing colons are retained; only non-content MediaWiki namespaces are excluded.
 - Vector and graph storage are independent. Rebuild or restore both together when changing the source corpus.
 - Query latency is dominated by remote LLM calls and the four-stage verification flow.
 - Neo4j lookup values are parameterized, and the reasoning prompts explicitly treat user input as untrusted data.
-- The Streamlit sidebar identifies configured dependencies; it is not a live
-  dependency-health check.
+- The retired Streamlit sidebar was not a dependency-health check. Product
+  `/health/ready` uses fresh bounded dependency checks, not the legacy indicators;
+  full manifest audits remain host-only `graphmind doctor` work.
 - The optional sparse-graph command computes pairwise title similarity and is
   an offline operation, not part of normal serving.
 
@@ -364,12 +357,13 @@ The unit tests do not contact Neo4j, Chroma, or Ollama. Before a release, also r
 | `Input file ... not found` | A previous ingestion stage has not run. | Run the crawler, then the cleaner. |
 | No relevant answers | Chroma or Neo4j is empty, unavailable, or out of sync. | Verify both stores were built from the same cleaned corpus. |
 | `OLLAMA_API_KEY is not configured` | `.env` is missing or not loaded. | Create `.env` from `.env.example` and set the key. |
-| Windows access violation during evaluation | Embedding-library DLL ordering issue. | Keep the top-level `pyarrow.dataset` import in `run_eval_300.py`. |
-| `401 Unauthorized` from MCP | Missing/expired bearer token. | Use `GRAPHMIND_API_KEY` or obtain a fresh Google token. |
+| Windows access violation during evaluation | Embedding-library DLL ordering issue. | Keep the top-level `pyarrow.dataset` import in `run_eval_100.py`. |
+| `401 Unauthorized` from MCP | Missing, expired, unverified or revoked resource grant. | Use the configured client's Keycloak OAuth login; static keys and direct Google tokens are rejected. |
+| `503 identity_unavailable` | Current identity authority cannot be reached/validated. | Restore the private identity dependency and retry; do not replace OAuth with a shared token. |
 
 ## Development principles
 
-Keep source modules small and side-effect free where possible, keep generated stores out of code changes, remove only verified dead or duplicated code, and preserve the answer contract returned by `GoTReasoningEngine.reason()`:
+Keep source modules small and side-effect free where possible, keep generated stores out of code changes, remove only verified dead or duplicated code, and preserve the legacy compatibility keys returned by `GoTReasoningEngine.reason()` without exposing that prototype as the product boundary:
 
 ```python
 {"answer": str, "path": list[str], "knowledge": str, "verification": dict}

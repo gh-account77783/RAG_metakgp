@@ -1,6 +1,6 @@
 # Dependency Inventory
 
-Updated: 2026-09-14
+Updated: 2026-10-03
 
 This inventory separates the installable GraphMind package from development-only
 legacy code and external model or service components. It records dependency facts;
@@ -11,21 +11,40 @@ release decision.
 
 The package metadata in `pyproject.toml` currently declares:
 
+Supported interpreter baseline is CPython 3.13 (`>=3.13,<3.14`), deliberately
+narrowed from the unqualified >=3.11 claim. This does not claim native OS service
+support. Offline CI now installs under the snapshot on Ubuntu/Windows and runs
+clean built-wheel verification; actual runs on the changed candidate still need
+CI/EC2 evidence. Node is a test-only prerequisite for the browser-script fault
+regression, not an application runtime dependency.
+
 | Purpose | Direct dependency |
 | --- | --- |
 | Vector store | `chromadb==1.5.9` |
 | Graph client | `neo4j==6.3.0` |
 | PDF text extraction | `pypdf==6.18.0` |
+| MCP protocol/resource server | `mcp==2.0.1` |
+| OIDC ID-token validation | `PyJWT==2.14.0` |
+| Browser/ASGI routes | `starlette==1.6.0` |
+| ASGI process | `uvicorn==0.53.0` |
 | Test/build command | `build==1.6.0` |
 | Build backend | `setuptools==80.9.0` |
 | Wheel construction | `wheel==0.45.1` |
 
-[`constraints/core-py313.txt`](constraints/core-py313.txt) captures all 84 direct,
-build, test, and transitive distributions resolved in a clean CPython 3.13 Windows
-x86-64 environment with pip 26.2.1. Installation and `pip check` passed on
-2026-09-14. This file is an auditable resolver snapshot, not yet the release lock:
-P4 must install the same snapshot on Ubuntu and Windows or record the smallest
-platform-specific split required by wheel availability.
+[`constraints/core-py313.txt`](constraints/core-py313.txt) captures all 97 direct,
+build, test, and transitive distributions resolved for CPython 3.13 Windows
+x86-64 with pip 26.2.1. A clean constrained Windows virtual-environment install
+and `pip check` passed on 2026-09-16. This file is an auditable resolver snapshot,
+not yet the release lock: Ubuntu, Windows 11, and Windows Server 2025 must each
+clean-install it or record the smallest platform-specific split required by wheel
+availability.
+
+`constraints/linux-py313.txt` adds `uvloop==0.22.1`, the Linux-only dependency
+of Chroma's `uvicorn[standard]` extra. Its [published CPython 3.13 Linux wheels](https://pypi.org/project/uvloop/0.22.1/)
+and installed Uvicorn metadata support this overlay; actual Ubuntu resolution,
+installation and runtime remain acceptance checks, not inferred passes. Apply
+both constraints files. Inventory tests follow extras/markers to require exact
+pins across the Windows and Linux dependency closures.
 
 Most transitive packages enter through Chroma, including its HTTP, ONNX Runtime,
 OpenTelemetry, Kubernetes-client, tokenization, validation, and CLI stacks. Neo4j
@@ -71,21 +90,28 @@ alternative, not an implemented dependency.
 
 ## P5/P6 browser, OAuth, and MCP group
 
-The user moved the MCP/OAuth design spike and implementation to P5/P6. These
-components are therefore inventoried as pending and are not package dependencies
-yet:
-
-| Area | Current evidence | Pinning point |
+| Area | Selected candidate | Boundary |
 | --- | --- | --- |
-| Upstream identity | Google OpenID Connect | P5 selects the maintained authorization component and pins its dependencies. |
-| Browser/API service | Legacy prototype uses FastAPI/Uvicorn | P5 decides whether those components remain and pins the chosen versions. |
-| Password hashing/email verification | Contract accepted; implementation absent | P5 selects memory-hard hashing and mail/token dependencies. |
-| MCP SDK | Legacy requirements contain unpinned `mcp`; current stable Python SDK observed as `2.2.0` | P6 pins the SDK and protocol revision after the authenticated-client design is implemented. |
-| Token validation | Legacy prototype uses unpinned `python-jose[cryptography]` | P5/P6 choose the maintained GraphMind-token validation path; legacy presence is not acceptance. |
+| Credential/account authority | Keycloak `26.7.3` | External same-host native Java service; owns passwords, verification, Google links, status, grants, signing keys and migrations. |
+| Identity database | PostgreSQL `17` | External same-host service; Keycloak's development-file database is excluded from production. |
+| Upstream identity | Google OpenID Connect through Keycloak | Google tokens are never accepted directly by GraphMind. Exact test client and callback remain deployment secrets. |
+| Browser/API service | Starlette `1.6.0` through MCP SDK ASGI app | Stateless GraphMind process; Keycloak introspection checks every request. |
+| MCP SDK | `mcp==2.0.1` | Streamable HTTP and RFC 9728 protected-resource discovery; 2026-07-28 plus 2025-11-25 compatibility. |
+| Token validation | Keycloak RFC 7662 introspection plus `PyJWT==2.14.0` ID-token validation | Exact issuer, resource audience, scope, expiry, verified email, nonce and active account are enforced. |
+| Initial MCP client | Claude Code public PKCE client on callback port 8765 | Anonymous dynamic registration is disabled; independent SDK/protocol acceptance remains required. |
 
-The P5/P6 resolver snapshot must be generated from a clean environment after these
-choices are implemented. It must not reuse the unrelated OAuth libraries already
-pulled by Chroma.
+The Python group adds 13 resolver entries over the earlier 84-package snapshot:
+`mcp`, `mcp-types`, `httpx2`, `httpcore2`, `truststore`, `PyJWT`, `cryptography`,
+`cffi`, `pycparser`, `python-multipart`, `sse-starlette`, `starlette`, and Windows'
+conditional `pywin32`; normal resolver movement also refreshed a few existing
+pins. Starlette and Uvicorn are direct pins because GraphMind imports them. PyJWT
+is a direct pin; MCP's crypto extra supplies the signature backend.
+
+Keycloak, PostgreSQL, Java, Google, SMTP, and Claude Code are service/runtime
+dependencies rather than Python wheel dependencies. Their exact artifacts,
+hashes, licenses, memory and native service behavior remain real-environment
+acceptance evidence. The realm template and route/client contract live in
+`deploy/keycloak/` and `AUTH_AND_MCP.md`.
 
 ## Legacy and development-only requirements
 

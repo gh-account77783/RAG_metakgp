@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import heapq
+import math
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -17,7 +19,8 @@ class VectorStore(Protocol):
     def upsert_version(self, installation_id: str, chunks: Sequence[Chunk]) -> None: ...
     def count_version(self, installation_id: str, version_id: str) -> int: ...
     def chunk_ids_for_version(self, installation_id: str, version_id: str) -> set[str]: ...
-    def search(self, installation_id: str, query: str, limit: int) -> list[SearchHit]: ...
+    def search(self, installation_id: str, query: str, limit: int,
+               *, active_version_ids: set[str] | None = None) -> list[SearchHit]: ...
     def delete_document(self, installation_id: str, document_id: str) -> None: ...
     def close(self) -> None: ...
 
@@ -39,6 +42,7 @@ class GraphStore(Protocol):
         seed_chunk_ids: Sequence[str],
         limit: int,
         scope: str = "chunk",
+        *, active_version_ids: set[str] | None = None,
     ) -> list[str]: ...
     def delete_document(self, installation_id: str, document_id: str) -> None: ...
     def close(self) -> None: ...
@@ -80,12 +84,14 @@ class MemoryVectorStore:
             if item_installation == installation_id and item_version == version_id
         }
 
-    def search(self, installation_id: str, query: str, limit: int) -> list[SearchHit]:
+    def search(self, installation_id: str, query: str, limit: int,
+               *, active_version_ids: set[str] | None = None) -> list[SearchHit]:
         query_vector = self.embedding.embed(query)
         hits = [
             SearchHit(chunk_id=chunk_id, score=cosine_similarity(query_vector, vector))
-            for (item_installation, chunk_id), (_, _, vector, _) in self._items.items()
+            for (item_installation, chunk_id), (version_id, _, vector, _) in self._items.items()
             if item_installation == installation_id
+            and (active_version_ids is None or version_id in active_version_ids)
         ]
         return sorted(hits, key=lambda item: (-item.score, item.chunk_id))[:limit]
 
@@ -137,6 +143,7 @@ class MemoryGraphStore:
         seed_chunk_ids: Sequence[str],
         limit: int,
         scope: str = "chunk",
+        *, active_version_ids: set[str] | None = None,
     ) -> list[str]:
         if limit <= 0:
             return []
@@ -144,6 +151,8 @@ class MemoryGraphStore:
             self._chunks[(installation_id, chunk_id)]
             for chunk_id in seed_chunk_ids
             if (installation_id, chunk_id) in self._chunks
+            and (active_version_ids is None
+                 or self._chunks[(installation_id, chunk_id)].version_id in active_version_ids)
         ]
         reference_sources = seed_chunks
         if scope == "document":
@@ -166,6 +175,7 @@ class MemoryGraphStore:
             chunk.chunk_id
             for (item_installation, _), chunk in self._chunks.items()
             if item_installation == installation_id and chunk.document_id in target_documents
+            and (active_version_ids is None or chunk.version_id in active_version_ids)
         )
         return result[:limit]
 
@@ -288,20 +298,55 @@ class ChromaVectorStore:
         except Exception as exc:
             raise DependencyUnavailableError("Chroma chunk-ID read failed") from exc
 
-    def search(self, installation_id: str, query: str, limit: int) -> list[SearchHit]:
+    def search(self, installation_id: str, query: str, limit: int,
+               *, active_version_ids: set[str] | None = None) -> list[SearchHit]:
+        if active_version_ids == set():
+            return []
         try:
-            result = self._get_collection().query(
-                query_embeddings=[self.embedding.embed(query)],
+            filters = [{"installation_id": {"$eq": installation_id}}]
+            if active_version_ids is not None:
+                filters.append({"version_id": {"$in": sorted(active_version_ids)}})
+            collection = self._get_collection()
+            query_vector = self.embedding.embed(query)
+            where = {"$and": filters} if len(filters) > 1 else filters[0]
+            result = collection.query(
+                query_embeddings=[query_vector],
                 n_results=max(1, limit),
-                where={"installation_id": {"$eq": installation_id}},
+                where=where,
                 include=["distances"],
             )
             ids = (result.get("ids") or [[]])[0]
             distances = (result.get("distances") or [[]])[0]
-            return [
+            hits = [
                 SearchHit(chunk_id=str(chunk_id), score=1.0 - float(distance))
                 for chunk_id, distance in zip(ids, distances, strict=True)
             ]
+            if active_version_ids is not None and len(hits) < limit:
+                # The pinned local Chroma runtime can omit a newly written
+                # vector at its HNSW/buffer boundary even when get() finds it.
+                # Fill a short filtered result by scanning eligible vectors in
+                # bounded pages, retaining only top-k (never historical text).
+                best: list[tuple[float, str]] = []
+                query_norm = math.sqrt(sum(value * value for value in query_vector))
+                offset = 0
+                while True:
+                    page = collection.get(where=where, include=["embeddings"], limit=256, offset=offset)
+                    page_ids = page.get("ids") or []
+                    vectors = page.get("embeddings")
+                    if vectors is None and page_ids:
+                        raise DependencyUnavailableError("Chroma omitted stored embeddings")
+                    for chunk_id, raw in zip(page_ids, vectors if vectors is not None else [], strict=True):
+                        vector = [float(value) for value in raw]
+                        dot = cosine_similarity(query_vector, vector)
+                        norm = math.sqrt(sum(value * value for value in vector)) * query_norm
+                        score = dot / norm if norm else 0.0
+                        best.append((score, str(chunk_id)))
+                    best = heapq.nlargest(max(1, limit), best)
+                    if len(page_ids) < 256:
+                        break
+                    offset += len(page_ids)
+                hits = [SearchHit(chunk_id=chunk_id, score=score) for score, chunk_id in best]
+            return hits
         except GraphMindError:
             raise
         except Exception as exc:
@@ -404,7 +449,9 @@ class Neo4jGraphStore:
         MERGE (v)-[:HAS_CHUNK]->(c)
         """
         delete_references_query = """
-        MATCH (source:GraphMindChunk {installation_id: $installation_id})-[old:REFERENCES]->()
+        MATCH (source:GraphMindChunk {installation_id: $installation_id})
+              -[old:REFERENCES]->(target:GraphMindDocument {installation_id: $installation_id})
+        WHERE source.version_id = $version_id OR target.document_id = $document_id
         DELETE old
         """
         resolve_query = """
@@ -414,32 +461,36 @@ class Neo4jGraphStore:
             installation_id: $installation_id,
             normalized_name: target_name
         })
+        WHERE source.version_id = $version_id OR target.document_id = $document_id
         MERGE (source)-[:REFERENCES]->(target)
         RETURN count(*) AS resolved
         """
         try:
             driver = self._get_driver()
-            driver.execute_query(
-                query,
-                installation_id=installation_id,
-                document_id=document.document_id,
-                display_name=document.display_name,
-                normalized_name=document.normalized_name,
-                collection_id=document.collection_id,
-                version_id=version.version_id,
-                chunks=rows,
-                database_=self.database,
-            )
-            driver.execute_query(
-                delete_references_query,
-                installation_id=installation_id,
-                database_=self.database,
-            )
-            driver.execute_query(
-                resolve_query,
-                installation_id=installation_id,
-                database_=self.database,
-            )
+
+            def write_version(transaction):
+                transaction.run(
+                    query,
+                    installation_id=installation_id,
+                    document_id=document.document_id,
+                    display_name=document.display_name,
+                    normalized_name=document.normalized_name,
+                    collection_id=document.collection_id,
+                    version_id=version.version_id,
+                    chunks=rows,
+                ).consume()
+                for statement in (delete_references_query, resolve_query):
+                    transaction.run(
+                        statement,
+                        installation_id=installation_id,
+                        document_id=document.document_id,
+                        version_id=version.version_id,
+                    ).consume()
+
+            # Publish the nodes and only their affected references together.
+            # Readers see the old or new graph; failed resolution rolls back.
+            with driver.session(database=self.database) as session:
+                session.execute_write(write_version)
         except DependencyUnavailableError:
             raise
         except Exception as exc:
@@ -483,8 +534,9 @@ class Neo4jGraphStore:
         seed_chunk_ids: Sequence[str],
         limit: int,
         scope: str = "chunk",
+        *, active_version_ids: set[str] | None = None,
     ) -> list[str]:
-        if not seed_chunk_ids or limit <= 0:
+        if not seed_chunk_ids or limit <= 0 or active_version_ids == set():
             return []
         if scope == "document":
             relation = """
@@ -511,6 +563,8 @@ class Neo4jGraphStore:
                 UNWIND $seed_ids AS seed_id
                 {relation}
                 MATCH (target)-[:HAS_VERSION]->(:GraphMindVersion)-[:HAS_CHUNK]->(chunk:GraphMindChunk)
+                WHERE ($active_versions IS NULL OR chunk.version_id IN $active_versions)
+                  AND ($active_versions IS NULL OR source.version_id IN $active_versions)
                 RETURN DISTINCT chunk.chunk_id AS chunk_id
                 ORDER BY chunk_id
                 LIMIT $limit
@@ -518,6 +572,7 @@ class Neo4jGraphStore:
                 installation_id=installation_id,
                 seed_ids=list(seed_chunk_ids),
                 limit=int(limit),
+                active_versions=None if active_version_ids is None else sorted(active_version_ids),
                 database_=self.database,
             )
             return [str(record["chunk_id"]) for record in records]

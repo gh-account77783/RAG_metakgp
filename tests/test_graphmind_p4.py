@@ -41,6 +41,7 @@ class FakeTransport:
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls = []
+        self.model_metadata = None
 
     def request_json(self, method, url, *, headers, payload, timeout):
         self.calls.append(
@@ -52,7 +53,12 @@ class FakeTransport:
                 "timeout": timeout,
             }
         )
-        response = self.responses.pop(0)
+        if method == "GET" and self.model_metadata is not None:
+            response = self.model_metadata
+        else:
+            response = self.responses.pop(0)
+            if method == "GET" and isinstance(response, dict) and "models" in response:
+                self.model_metadata = response
         if isinstance(response, BaseException):
             raise response
         return response
@@ -149,7 +155,8 @@ class OllamaEmbeddingTests(unittest.TestCase):
         self.assertIn(f"@{digest}", embedding.fingerprint)
         self.assertIn("precision=fp16", embedding.fingerprint)
         self.assertEqual(len(embedding.embed_many(["a", "b", "c"])), 3)
-        self.assertEqual([call["method"] for call in transport.calls], ["GET", "POST", "POST"])
+        self.assertEqual([call["method"] for call in transport.calls],
+                         ["GET", "GET", "GET", "POST", "GET", "GET", "POST", "GET"])
         self.assertNotIn("Authorization", transport.calls[0]["headers"])
 
         mismatch = OllamaEmbedding(
@@ -183,7 +190,11 @@ class OllamaEmbeddingTests(unittest.TestCase):
             dimension=4,
             revision="b" * 64,
             precision="fp16",
-            transport=FakeTransport([{"embeddings": [[1, 2]]}]),
+            transport=FakeTransport([
+                {"models": [{"name": "bge-m3", "digest": "b" * 64,
+                             "details": {"quantization_level": "F16"}}]},
+                {"embeddings": [[1, 2]]},
+            ]),
         )
         with self.assertRaises(EmbeddingDimensionError):
             embedding.embed("text")
@@ -244,6 +255,7 @@ class OllamaProviderTests(unittest.TestCase):
         self.assertEqual(result.answer, "CERULEAN")
         self.assertNotIn("Authorization", transport.calls[0]["headers"])
         local_request = transport.calls[0]["payload"]
+        self.assertIs(local_request["think"], False)
         self.assertIsInstance(local_request["format"], dict)
         self.assertEqual(
             local_request["format"]["properties"]["outcome"]["enum"],
@@ -273,6 +285,7 @@ class OllamaProviderTests(unittest.TestCase):
             "CERULEAN",
         )
         self.assertEqual(hosted_transport.calls[0]["payload"]["format"], "json")
+        self.assertNotIn("think", hosted_transport.calls[0]["payload"])
         self.assertEqual(
             hosted_transport.calls[0]["headers"]["Authorization"], "Bearer secret"
         )
@@ -285,6 +298,14 @@ class OllamaProviderTests(unittest.TestCase):
                 mode="hosted",
                 transport=FakeTransport([]),
             ).answer("question", self.evidence())
+
+    def test_nonpreset_local_model_keeps_native_thinking_controls(self):
+        transport = FakeTransport([{"message": {"content":
+            '{"outcome":"answer","answer":"CERULEAN","citation_ids":["citation"]}'}}])
+        provider = OllamaProvider("http://127.0.0.1:11434", "", "other-local-model",
+                                  mode="local", max_retries=0, transport=transport)
+        self.assertEqual(provider.answer("What is the code?", self.evidence()).answer, "CERULEAN")
+        self.assertNotIn("think", transport.calls[0]["payload"])
 
     def test_retry_and_typed_http_failures(self):
         success = {

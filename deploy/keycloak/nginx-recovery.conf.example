@@ -1,0 +1,17 @@
+# Merge the following into an existing qualified Nginx HTTP/TLS proxy. This is
+# a snippet, not a whole deployment. Use server-inherited trusted proxy headers.
+# In http {}: GETs and link navigation are not rate-limited; ignore supplied XFF.
+map $request_method $recovery_post_key { default ""; POST $binary_remote_addr; }
+limit_req_zone $recovery_post_key zone=graphmind_reset:10m rate=5r/m;
+
+# In the realm's HTTPS server {}: only the initial reset-form POST is limited.
+# The per-account cooldown is enforced separately in the Keycloak provider.
+location = /realms/graphmind/login-actions/reset-credentials {
+    access_log off;
+    limit_req zone=graphmind_reset burst=3 nodelay;
+    limit_req_status 429;
+    proxy_pass http://127.0.0.1:18080;
+}
+# Keep global error_log non-sensitive (the acceptance proxy uses /dev/null),
+# and omit query strings, request lines, bodies and headers from all access logs.
+# Keep the broader login-actions route access_log off for reset-link protection.

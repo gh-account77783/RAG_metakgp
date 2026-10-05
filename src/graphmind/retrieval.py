@@ -59,10 +59,12 @@ class RetrievalService:
             raise EmbeddingMismatchError(
                 "Active documents use a different embedding fingerprint; reindex them explicitly"
             )
+        active_versions = self.metadata.active_version_ids()
         hits = self.vector.search(
             self.installation_id,
             query,
             limit=max(self.seed_limit * 6, self.max_evidence),
+            active_version_ids=active_versions,
         )
         hit_ids = [hit.chunk_id for hit in hits]
         active_hits = self.metadata.active_chunks(hit_ids)
@@ -80,6 +82,7 @@ class RetrievalService:
             seed_ids,
             self.graph_limit,
             self.graph_scope,
+            active_version_ids=active_versions,
         )
         graph_active = self.metadata.active_chunks(graph_ids)
         evidence: list[Evidence] = []
@@ -105,7 +108,13 @@ class RetrievalService:
                 )
                 seen.add(chunk_id)
                 if len(evidence) >= self.max_evidence:
-                    return evidence
+                    return self._validate_evidence(evidence)
+        return self._validate_evidence(evidence)
+
+    def _validate_evidence(self, evidence: list[Evidence]) -> list[Evidence]:
+        active_versions = self.metadata.active_version_ids()
+        if any(item.version_id not in active_versions for item in evidence):
+            raise RetryableQueryError("A source version changed during retrieval; retry")
         return evidence
 
 
@@ -151,6 +160,8 @@ class AnswerService:
         provider_calls_before: int,
         cancel_event: threading.Event | None,
     ) -> QueryResult:
+        if cancel_event is not None and cancel_event.is_set():
+            raise QueryCancelledError("Query was cancelled")
         if not evidence:
             return QueryResult(
                 outcome=Outcome.INSUFFICIENT_EVIDENCE,
@@ -193,6 +204,22 @@ class AnswerService:
                 "duration_ms": round((time.perf_counter() - started) * 1000, 3),
             },
         )
+
+    def search(self, question: str, *, cancel_event: threading.Event | None = None) -> list[Evidence]:
+        """Share answer admission limits with client-side synthesis searches."""
+        if cancel_event is not None and cancel_event.is_set():
+            raise QueryCancelledError("Query was cancelled")
+        if not self._acquire_capacity():
+            raise QueryCapacityError("Query capacity is full")
+        try:
+            if cancel_event is not None and cancel_event.is_set():
+                raise QueryCancelledError("Query was cancelled")
+            evidence = self.retrieval.retrieve(question)
+            if cancel_event is not None and cancel_event.is_set():
+                raise QueryCancelledError("Query was cancelled")
+            return evidence
+        finally:
+            self._capacity.release()
 
     def query_with_evidence(
         self, question: str, *, cancel_event: threading.Event | None = None

@@ -62,6 +62,21 @@ _ENV_KEYS = {
     "GRAPHMIND_MAX_CONCURRENT_QUERIES": "max_concurrent_queries",
     "GRAPHMIND_MAX_QUEUED_QUERIES": "max_queued_queries",
     "GRAPHMIND_QUERY_QUEUE_TIMEOUT_SECONDS": "query_queue_timeout_seconds",
+    "GRAPHMIND_PUBLIC_BASE_URL": "public_base_url",
+    "GRAPHMIND_IDENTITY_ISSUER_URL": "identity_issuer_url",
+    "GRAPHMIND_IDENTITY_BROWSER_CLIENT_ID": "identity_browser_client_id",
+    "GRAPHMIND_IDENTITY_BROWSER_CLIENT_SECRET": "identity_browser_client_secret",
+    "GRAPHMIND_IDENTITY_RESOURCE_CLIENT_ID": "identity_resource_client_id",
+    "GRAPHMIND_IDENTITY_RESOURCE_CLIENT_SECRET": "identity_resource_client_secret",
+    "GRAPHMIND_IDENTITY_ADMIN_CLIENT_ID": "identity_admin_client_id",
+    "GRAPHMIND_IDENTITY_ADMIN_CLIENT_SECRET": "identity_admin_client_secret",
+    "GRAPHMIND_IDENTITY_REQUIRED_SCOPE": "identity_required_scope",
+    "GRAPHMIND_IDENTITY_MCP_AUDIENCE": "identity_mcp_audience",
+    "GRAPHMIND_IDENTITY_FLOW_SIGNING_KEY": "identity_flow_signing_key",
+    "GRAPHMIND_IDENTITY_HTTP_TIMEOUT_SECONDS": "identity_http_timeout_seconds",
+    "GRAPHMIND_BROWSER_COOKIE_SECURE": "browser_cookie_secure",
+    "GRAPHMIND_BROWSER_MAX_REQUEST_BYTES": "browser_max_request_bytes",
+    "GRAPHMIND_BROWSER_MAX_FETCH_CHARS": "browser_max_fetch_chars",
 }
 
 
@@ -165,6 +180,21 @@ class Settings:
     max_concurrent_queries: int = 4
     max_queued_queries: int = 8
     query_queue_timeout_seconds: float = 1.0
+    public_base_url: str = "http://127.0.0.1:8000"
+    identity_issuer_url: str = "http://127.0.0.1:8080/realms/graphmind"
+    identity_browser_client_id: str = "graphmind-web"
+    identity_browser_client_secret: str = field(default="", repr=False)
+    identity_resource_client_id: str = "graphmind-resource"
+    identity_resource_client_secret: str = field(default="", repr=False)
+    identity_admin_client_id: str = "graphmind-admin"
+    identity_admin_client_secret: str = field(default="", repr=False)
+    identity_required_scope: str = "graphmind:read"
+    identity_mcp_audience: str = "http://127.0.0.1:8000/mcp"
+    identity_flow_signing_key: str = field(default="", repr=False)
+    identity_http_timeout_seconds: int = 10
+    browser_cookie_secure: bool = True
+    browser_max_request_bytes: int = 16_384
+    browser_max_fetch_chars: int = 24_000
 
     @property
     def sqlite_path(self) -> Path:
@@ -260,6 +290,21 @@ class Settings:
             "max_concurrent_queries": 4,
             "max_queued_queries": 8,
             "query_queue_timeout_seconds": 1.0,
+            "public_base_url": "http://127.0.0.1:8000",
+            "identity_issuer_url": "http://127.0.0.1:8080/realms/graphmind",
+            "identity_browser_client_id": "graphmind-web",
+            "identity_browser_client_secret": "",
+            "identity_resource_client_id": "graphmind-resource",
+            "identity_resource_client_secret": "",
+            "identity_admin_client_id": "graphmind-admin",
+            "identity_admin_client_secret": "",
+            "identity_required_scope": "graphmind:read",
+            "identity_mcp_audience": "http://127.0.0.1:8000/mcp",
+            "identity_flow_signing_key": "",
+            "identity_http_timeout_seconds": 10,
+            "browser_cookie_secure": True,
+            "browser_max_request_bytes": 16_384,
+            "browser_max_fetch_chars": 24_000,
         }
         if selected_config is not None:
             path = selected_config.expanduser().resolve()
@@ -301,11 +346,21 @@ class Settings:
             "max_question_chars",
             "max_concurrent_queries",
             "max_queued_queries",
+            "identity_http_timeout_seconds",
+            "browser_max_request_bytes",
+            "browser_max_fetch_chars",
         ):
             try:
                 values[key] = int(values[key])
             except (TypeError, ValueError) as exc:
                 raise ConfigurationError(f"{key} must be an integer") from exc
+        if isinstance(values["browser_cookie_secure"], str):
+            lowered = str(values["browser_cookie_secure"]).strip().casefold()
+            if lowered not in {"true", "false", "1", "0", "yes", "no"}:
+                raise ConfigurationError("browser_cookie_secure must be true or false")
+            values["browser_cookie_secure"] = lowered in {"true", "1", "yes"}
+        else:
+            values["browser_cookie_secure"] = bool(values["browser_cookie_secure"])
         for key in ("retrieval_min_vector_score", "query_queue_timeout_seconds"):
             try:
                 values[key] = float(values[key])
@@ -319,7 +374,14 @@ class Settings:
         settings.validate()
         return settings
 
-    def validate(self, *, require_neo4j_secret: bool = False, require_provider_secret: bool = False) -> None:
+    def validate(
+        self,
+        *,
+        require_neo4j_secret: bool = False,
+        require_provider_secret: bool = False,
+        require_identity_secrets: bool = False,
+        require_identity_admin_secret: bool = False,
+    ) -> None:
         if not self.collection_id.strip() or not self.collection_name.strip():
             raise ConfigurationError("Collection identifiers cannot be empty")
         if self.max_file_bytes <= 0:
@@ -420,6 +482,57 @@ class Settings:
             raise ConfigurationError("max_queued_queries cannot be negative")
         if self.query_queue_timeout_seconds < 0:
             raise ConfigurationError("query_queue_timeout_seconds cannot be negative")
+        public_url = urlparse(self.public_base_url)
+        issuer_url = urlparse(self.identity_issuer_url)
+        audience_url = urlparse(self.identity_mcp_audience)
+        for label, parsed in (
+            ("GRAPHMIND_PUBLIC_BASE_URL", public_url),
+            ("GRAPHMIND_IDENTITY_ISSUER_URL", issuer_url),
+            ("GRAPHMIND_IDENTITY_MCP_AUDIENCE", audience_url),
+        ):
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                raise ConfigurationError(f"{label} must be an absolute HTTP(S) URL")
+            if parsed.scheme != "https" and parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+                raise ConfigurationError(f"{label} must use HTTPS outside loopback development")
+            if parsed.query or parsed.fragment:
+                raise ConfigurationError(f"{label} cannot include a query or fragment")
+        expected_audience = self.public_base_url.rstrip("/") + "/mcp"
+        if not self.browser_cookie_secure and not (
+            public_url.scheme == "http" and public_url.hostname in {"127.0.0.1", "localhost", "::1"}
+        ):
+            raise ConfigurationError("Secure browser cookies may only be disabled for loopback HTTP development")
+        if self.identity_mcp_audience.rstrip("/") != expected_audience:
+            raise ConfigurationError(
+                "GRAPHMIND_IDENTITY_MCP_AUDIENCE must equal GRAPHMIND_PUBLIC_BASE_URL plus /mcp"
+            )
+        for label, value in (
+            ("identity_browser_client_id", self.identity_browser_client_id),
+            ("identity_resource_client_id", self.identity_resource_client_id),
+            ("identity_admin_client_id", self.identity_admin_client_id),
+            ("identity_required_scope", self.identity_required_scope),
+        ):
+            if not value.strip() or any(character.isspace() for character in value):
+                raise ConfigurationError(f"{label} must be a non-empty token")
+        if self.identity_http_timeout_seconds < 1:
+            raise ConfigurationError("identity_http_timeout_seconds must be positive")
+        if self.browser_max_request_bytes < 1024 or self.browser_max_fetch_chars < 1000:
+            raise ConfigurationError("Browser request and fetch budgets are too small")
+        if require_identity_secrets:
+            missing = [
+                label
+                for label, value in (
+                    ("GRAPHMIND_IDENTITY_BROWSER_CLIENT_SECRET", self.identity_browser_client_secret),
+                    ("GRAPHMIND_IDENTITY_RESOURCE_CLIENT_SECRET", self.identity_resource_client_secret),
+                    ("GRAPHMIND_IDENTITY_FLOW_SIGNING_KEY", self.identity_flow_signing_key),
+                )
+                if not value
+            ]
+            if missing:
+                raise ConfigurationError(f"Missing identity secrets: {', '.join(missing)}")
+            if len(self.identity_flow_signing_key.encode("utf-8")) < 32:
+                raise ConfigurationError("GRAPHMIND_IDENTITY_FLOW_SIGNING_KEY must be at least 32 bytes")
+        if require_identity_admin_secret and not self.identity_admin_client_secret:
+            raise ConfigurationError("GRAPHMIND_IDENTITY_ADMIN_CLIENT_SECRET is required for host account operations")
         if require_neo4j_secret and not self.neo4j_password:
             raise ConfigurationError("NEO4J_PASSWORD is required for Neo4j operations")
         if (
@@ -501,4 +614,27 @@ class Settings:
             "query_queue_timeout_seconds": self.query_queue_timeout_seconds,
             "ollama_base_url": self.ollama_base_url,
             "ollama_api_key": "<configured>" if self.ollama_api_key else "<missing>",
+            "public_base_url": self.public_base_url,
+            "identity_issuer_url": self.identity_issuer_url,
+            "identity_browser_client_id": self.identity_browser_client_id,
+            "identity_browser_client_secret": (
+                "<configured>" if self.identity_browser_client_secret else "<missing>"
+            ),
+            "identity_resource_client_id": self.identity_resource_client_id,
+            "identity_resource_client_secret": (
+                "<configured>" if self.identity_resource_client_secret else "<missing>"
+            ),
+            "identity_admin_client_id": self.identity_admin_client_id,
+            "identity_admin_client_secret": (
+                "<configured>" if self.identity_admin_client_secret else "<missing>"
+            ),
+            "identity_required_scope": self.identity_required_scope,
+            "identity_mcp_audience": self.identity_mcp_audience,
+            "identity_flow_signing_key": (
+                "<configured>" if self.identity_flow_signing_key else "<missing>"
+            ),
+            "identity_http_timeout_seconds": self.identity_http_timeout_seconds,
+            "browser_cookie_secure": self.browser_cookie_secure,
+            "browser_max_request_bytes": self.browser_max_request_bytes,
+            "browser_max_fetch_chars": self.browser_max_fetch_chars,
         }
