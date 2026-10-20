@@ -1,12 +1,55 @@
 """Offline recovery asset contracts; not native provider/mailbox acceptance."""
+import contextlib
+import importlib.util
+import io
 import json
 from pathlib import Path
+import subprocess
+import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class RecoveryAssetTests(unittest.TestCase):
+    def test_provider_builder_uses_argument_file_for_long_native_classpath(self):
+        spec = importlib.util.spec_from_file_location('recovery_builder_test', ROOT / 'tools/build_keycloak_recovery.py')
+        builder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(builder)
+        with tempfile.TemporaryDirectory(prefix='graphmind build space ') as temporary:
+            root = Path(temporary)
+            source = root / 'source'
+            (source / 'META-INF').mkdir(parents=True)
+            (source / 'Example.java').write_text('class Example {}')
+            libraries = root / 'libraries with spaces'
+            libraries.mkdir()
+            names = ['org.keycloak.' + name + '-26.7.5.jar' for name in
+                     ('keycloak-core', 'keycloak-server-spi', 'keycloak-server-spi-private', 'keycloak-services')]
+            names += [str(index) + '-' + 'long-library-name-' * 7 + '.jar' for index in range(220)]
+            for name in names:
+                (libraries / name).touch()
+            calls = []
+            def native_run(argv, **kwargs):
+                calls.append(argv)
+                if len(calls) == 1:
+                    return subprocess.CompletedProcess(argv, 0, stderr='openjdk version "21.0.12"')
+                self.assertEqual(len(argv), 2)
+                self.assertTrue(argv[1].startswith('@'))
+                arguments = Path(argv[1][1:]).read_text('utf-8')
+                self.assertGreater(len(arguments), 32767)
+                self.assertIn('"--release"\n"21"', arguments)
+                self.assertIn(str(libraries).replace('\\', '/'), arguments)
+                self.assertNotIn('\\', arguments)
+                return subprocess.CompletedProcess(argv, 0)
+            with patch.object(builder, 'ROOT', root), patch.object(builder, 'SOURCE', source), \
+                 patch.object(builder.subprocess, 'run', side_effect=native_run), \
+                 patch('sys.argv', ['build', '--jdk-bin', str(root / 'jdk'), '--classpath-dir', str(libraries),
+                                    '--output', str(root / 'output')]), contextlib.redirect_stdout(io.StringIO()):
+                builder.main()
+            self.assertEqual(len(calls), 2)
+            self.assertTrue((root / 'output/graphmind-keycloak-recovery-26.7.5.jar').is_file())
+
     def test_baseline_stays_disabled_until_provider_qualification(self):
         realm = json.loads((ROOT / 'deploy/keycloak/graphmind-realm.template.json').read_text('utf-8'))
         self.assertFalse(realm['resetPasswordAllowed'])

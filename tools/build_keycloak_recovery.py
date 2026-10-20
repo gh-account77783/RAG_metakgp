@@ -39,8 +39,18 @@ def main():
         parser.error('Existing provider artifact preserved; use a fresh output directory')
     with tempfile.TemporaryDirectory(prefix='graphmind-kc-recovery-') as temporary:
         classes = Path(temporary) / 'classes'; classes.mkdir()
-        subprocess.run([javac, '--release', '21', '-g:none', '-classpath', os.pathsep.join(map(str, jars)),
-                        '-d', classes, *sorted(SOURCE.rglob('*.java'))], check=True)
+        # Windows' process command line is bounded even when javac is launched
+        # without a shell. The full distribution classpath can exceed that limit
+        # in ordinary user/project paths. javac supports a native argument file.
+        compiler_args = ['--release', '21', '-g:none', '-classpath', os.pathsep.join(map(str, jars)),
+                         '-d', classes, *sorted(SOURCE.rglob('*.java'))]
+        argument_file = Path(temporary) / 'javac.args'
+        def quote_argument(value):
+            # javac argument files treat backslashes as escapes, including inside
+            # quotes. Forward slashes are valid for Windows Java filesystem paths.
+            return '"' + str(value).replace('\\', '/').replace('"', '\\"') + '"'
+        argument_file.write_text('\n'.join(map(quote_argument, compiler_args)) + '\n', encoding='utf-8')
+        subprocess.run([javac, '@' + str(argument_file)], check=True)
         shutil.copytree(SOURCE / 'META-INF', classes / 'META-INF')
         # Fixed ZIP metadata/order: deterministic provider, no build path/secret.
         with zipfile.ZipFile(artifact, 'x', compression=zipfile.ZIP_DEFLATED) as archive:
