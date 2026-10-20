@@ -32,6 +32,25 @@ from test_graphmind_p5_p6 import FakeApplication, FakeAuthority, FakeTransport, 
 
 
 class HardeningConfigurationTests(unittest.TestCase):
+    def test_portable_claude_config_uses_bounded_request_timeout(self):
+        root = Path(__file__).resolve().parents[1]
+        config = json.loads((root / '.mcp.json').read_text())
+        server = config['mcpServers']['graphmind-remote']
+        self.assertEqual(server['timeout'], 150000)
+        self.assertEqual(server['type'], 'http')
+        self.assertEqual(server['oauth']['callbackPort'], 8765)
+        self.assertNotIn('headers', server)
+
+    def test_native_cloud_model_default_and_explicit_override(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            missing = Path(temporary) / 'missing.env'
+            settings = Settings.load(dotenv_path=missing, environ={})
+            self.assertEqual(settings.answer_model, 'gemma4:31b')
+            direct = Settings(data_dir=Path(temporary), allowed_import_roots=(Path(temporary),))
+            self.assertEqual(direct.answer_model, 'gemma4:31b')
+            selected = Settings.load(dotenv_path=missing, environ={'GRAPHMIND_ANSWER_MODEL': 'operator-selected-model'})
+            self.assertEqual(selected.answer_model, 'operator-selected-model')
+
     def test_secure_cookie_exception_is_only_loopback_http(self):
         with tempfile.TemporaryDirectory() as temporary:
             settings = identity_settings(Path(temporary))

@@ -1,6 +1,6 @@
 # GraphMind identity service candidate
 
-GraphMind uses Keycloak 26.7.3 as its only credential, account, grant, token,
+GraphMind uses Keycloak 26.7.5 as its only credential, account, grant, token,
 verification, and identity-link authority. PostgreSQL 17 is the selected
 same-host production database candidate. Keycloak's development-file database is
 not accepted for a release installation.
@@ -18,7 +18,7 @@ subject mappers must reach access tokens and introspection, and both browser and
 MCP clients must have the three declared default scopes assigned on read-back.
 This does not add first/last-name profile requirements.
 The resource audience mapper must use only `included.custom.audience`, equal to
-the public MCP URL. Do not also set `included.client.audience`: Keycloak 26.7.3
+the public MCP URL. Do not also set `included.client.audience`: Keycloak 26.7.x
 gives that field precedence and omits the custom URL, so GraphMind correctly
 rejects the resulting token. Read-back alone is insufficient; verify the actual
 authorization-code token through introspection against the exact public URL.
@@ -66,23 +66,23 @@ restore, security-attribute persistence across restart, and attempted reader
 attribute edits against real Keycloak. These assets have offline contract tests;
 real profile application and registration remain integration gates.
 The JSON deliberately omits `unmanagedAttributePolicy`: disabled is the default.
-The pinned 26.7.3 REST parser rejects the literal UI label `DISABLED`; its
-[configuration enum](https://raw.githubusercontent.com/keycloak/keycloak/26.7.3/core/src/main/java/org/keycloak/representations/userprofile/config/UPConfig.java)
+The pinned 26.7.5 REST parser rejects the literal UI label `DISABLED`; its
+[configuration enum](https://raw.githubusercontent.com/keycloak/keycloak/26.7.5/core/src/main/java/org/keycloak/representations/userprofile/config/UPConfig.java)
 only represents enabled/admin-view/admin-edit overrides. Profile PUT returns
 200 with the normalized configuration, which must still be read back and checked.
 The reader process must not receive `GRAPHMIND_IDENTITY_ADMIN_CLIENT_SECRET`.
 Use a separate private host-account CLI environment. Listing uses paginated
 `first`/`max` requests rather than Keycloak's default first 100 users and rejects
 an explicit 10,000-account overflow/repeated page. Pagination follows the pinned
-[Admin REST API](https://www.keycloak.org/docs-api/26.7.3/rest-api/index.html#_users).
+[Admin REST API](https://www.keycloak.org/docs-api/26.7.5/rest-api/index.html#_users).
 
 Before testing, follow the [same-candidate acceptance matrix](../acceptance/README.md).
 It records profile read-back, real persistence/email/Google/two-user/client
 behavior, proxy logging and failed/pending cases separately from offline tests.
 
 The profile endpoint and `prompt=create` signup initiation follow the pinned
-[Keycloak admin implementation](https://raw.githubusercontent.com/keycloak/keycloak/26.7.3/services/src/main/java/org/keycloak/services/resources/admin/UserProfileResource.java)
-and [authorization implementation](https://raw.githubusercontent.com/keycloak/keycloak/26.7.3/services/src/main/java/org/keycloak/protocol/oidc/endpoints/AuthorizationEndpoint.java).
+[Keycloak admin implementation](https://raw.githubusercontent.com/keycloak/keycloak/26.7.5/services/src/main/java/org/keycloak/services/resources/admin/UserProfileResource.java)
+and [authorization implementation](https://raw.githubusercontent.com/keycloak/keycloak/26.7.5/services/src/main/java/org/keycloak/protocol/oidc/endpoints/AuthorizationEndpoint.java).
 
 Exact production installation, service wrapping, PostgreSQL backup, TLS proxy,
 and native Windows acceptance remain P7 work.
@@ -91,12 +91,12 @@ and native Windows acceptance remain P7 work.
 
 The baseline realm deliberately keeps `resetPasswordAllowed=false`. Enabling
 the stock reset flow alone is insufficient: Keycloak's
-[password update form](https://github.com/keycloak/keycloak/blob/26.7.3/themes/src/main/resources/theme/base/login/password-commons.ftl)
+[password update form](https://github.com/keycloak/keycloak/blob/26.7.5/themes/src/main/resources/theme/base/login/password-commons.ftl)
 makes signing out other sessions optional, and the stock reset flow can create
 a password for an account without one. GraphMind's accepted policy requires
 revocation and leaves Google-only recovery with Google.
 
-`recovery-src/` supplies two small native-authority providers, pinned to 26.7.3:
+`recovery-src/` supplies two small native-authority providers, pinned to 26.7.5:
 the existing-password chooser denies disabled/deleted/credentialless accounts
 with the same native acknowledgement and uses Keycloak's atomic single-use
 cache for a 60-second per-account email cooldown; the password-event listener
@@ -143,8 +143,9 @@ disabled until separate broker configuration and acceptance pass.
 
 ## Clear account emails
 
-`themes/graphmind/email` overrides only six English message strings: reset and
-verification subjects and their plain-text/HTML bodies. It inherits Keycloak's
+`themes/graphmind/email` overrides only nine English message strings: reset,
+verification and identity-provider linking subjects and their plain-text/HTML
+bodies. It inherits Keycloak's
 native `base` email templates and HTML sanitizer, without custom template code,
 images, tracking, shortened links or changes to identity handling. The subjects
 identify GraphMind and the action; bodies explain why the email arrived, use a
@@ -154,9 +155,13 @@ Copy the `graphmind` theme directory to the selected Keycloak installation's
 `themes/` directory, then set **only Email theme** to `graphmind` through private
 realm administration (`emailTheme`). Leave login/account/admin themes alone.
 The stock realm template does not select this optional theme before installation.
-Both bodies use native link `{0}`, realm name `{2}` and formatted expiry `{3}`;
+Reset/verification bodies use native link `{0}`, realm name `{2}` and formatted expiry `{3}`;
 reset's 15-minute lifespan and verification's configured lifespan remain native
 settings, not text constants. Never replace, log or shorten the actual links.
+Broker-link bodies use the native provider name `{0}`, realm name `{1}`, link
+`{3}` and formatted expiry `{5}`. They explain that the user requested linking
+an existing account, that confirmation is required, and not to share the link.
+The native account-link proof and first-broker-login flow remain unchanged.
 
 Qualify both MIME alternatives against native Keycloak mail rendered to an
 isolated SMTP sink, exercise both links, and check unchanged security settings

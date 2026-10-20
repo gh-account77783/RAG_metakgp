@@ -1,5 +1,5 @@
 {
-  "keycloakVersion": "26.7.3",
+  "keycloakVersion": "26.7.5",
   "realmSettings": {
     "resetPasswordAllowed": true,
     "resetCredentialsFlow": "graphmind reset credentials",

@@ -20,7 +20,7 @@ Private secrets are supplied through host-local protected configuration, never
 argv, URLs, shell tracing, commits or reports. Keep all local components on the
 one EC2 host; hosted-answer calls are the accepted exception.
 
-Use CPython 3.13, the checked-in constraints, Keycloak 26.7.3, PostgreSQL 17,
+Use CPython 3.13, the checked-in constraints, Keycloak 26.7.5, PostgreSQL 17,
 the recorded Neo4j edition/version and approved Ollama/model identities. Record
 artifact hashes, Git base **and all dirty-file hashes**, OS/runtime versions,
 proxy URLs and settings with secrets redacted. Do not stage/commit/push the
@@ -100,7 +100,7 @@ state. No skipped/unavailable row counts as passed.
 | Claude Code | Record exact CLI version; configure pre-registered public client/8765 callback; real interactive login, list/call all tools, source use, renewal/reconnect and revoked access; repeat for both users and both model modes. |
 | Independent MCP | Real client discovery/PKCE login, network initialize/list/search/fetch/ask/resource, reconnect/renewal/revoke; cannot substitute the already-issued-token script for OAuth acceptance. |
 | Changed stores/worker | Real Neo4j rollback/scoped-reference/concurrent-reader tests, eligible Chroma retrieval, Linux cross-process writer exclusion/expired-lease recovery; current Ollama digest/precision before/after batch, no concurrent tag mutation. |
-| Cancellation/resources | Real disconnect/cancel signals work, bounded queues/admission and no early slot release; record CPU/RAM/disk and errors without claiming final P7 capacity. |
+| Cancellation/resources | Exercise real disconnect/cancellation paths, bounded queues/admission and no early slot release. Record whether the transport actually signals the worker. A client abandoning a stateless call is not proof of immediate worker interruption: a bounded worker must retain its slot until it exits, ignore an abandoned result and recheck authorization/source eligibility before delivery. Record CPU/RAM/disk and errors without claiming final P7 capacity. |
 
 Keep failed attempts. Review the matrix before promoting P5/P6 gates. Native
 Windows 11/Server 2025 service/reboot acceptance, full model quality/load,

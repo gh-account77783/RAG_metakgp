@@ -164,7 +164,7 @@ class Settings:
     neo4j_database: str = "neo4j"
     ollama_base_url: str = "https://ollama.com"
     ollama_api_key: str = field(default="", repr=False)
-    answer_model: str = "gemma4:31b-cloud"
+    answer_model: str = "gemma4:31b"
     answer_provider: str = "ollama"
     answer_mode: str = "hosted"
     answer_timeout_seconds: int = 60
@@ -274,7 +274,7 @@ class Settings:
             "neo4j_database": "neo4j",
             "ollama_base_url": "https://ollama.com",
             "ollama_api_key": "",
-            "answer_model": "gemma4:31b-cloud",
+            "answer_model": "gemma4:31b",
             "answer_provider": "ollama",
             "answer_mode": "hosted",
             "answer_timeout_seconds": 60,

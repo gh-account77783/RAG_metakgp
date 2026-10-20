@@ -1,4 +1,4 @@
-"""Build the pinned Keycloak provider with JDK 21 and a 26.7.3 lib/lib/main directory.
+"""Build the pinned Keycloak provider with JDK 21 and a 26.7.5 lib/lib/main directory.
 
 No Maven download, runtime secret, password store or system installation required.
 Caller supplies a verified JDK and exact installed Keycloak distribution libraries.
@@ -31,10 +31,10 @@ def main():
     jars = sorted(args.classpath_dir.glob('*.jar'))
     required = ('keycloak-core', 'keycloak-server-spi', 'keycloak-server-spi-private', 'keycloak-services')
     for name in required:
-        if not any(jar.name == 'org.keycloak.' + name + '-26.7.3.jar' for jar in jars):
-            parser.error('Classpath must include exact Keycloak 26.7.3 library: ' + name)
+        if not any(jar.name == 'org.keycloak.' + name + '-26.7.5.jar' for jar in jars):
+            parser.error('Classpath must include exact Keycloak 26.7.5 library: ' + name)
     args.output.mkdir(parents=True, exist_ok=True)
-    artifact = args.output / 'graphmind-keycloak-recovery-26.7.3.jar'
+    artifact = args.output / 'graphmind-keycloak-recovery-26.7.5.jar'
     if artifact.exists():
         parser.error('Existing provider artifact preserved; use a fresh output directory')
     with tempfile.TemporaryDirectory(prefix='graphmind-kc-recovery-') as temporary:
@@ -50,7 +50,7 @@ def main():
                     info.compress_type = zipfile.ZIP_DEFLATED
                     info.external_attr = 0o644 << 16
                     archive.writestr(info, item.read_bytes())
-    report = {'keycloak': '26.7.3', 'java_release': 21,
+    report = {'keycloak': '26.7.5', 'java_release': 21,
               'provider_sha256': hashlib.sha256(artifact.read_bytes()).hexdigest(),
               'library_sha256': {jar.name: hashlib.sha256(jar.read_bytes()).hexdigest() for jar in jars},
               'sources_sha256': {item.relative_to(ROOT).as_posix(): hashlib.sha256(item.read_bytes()).hexdigest()

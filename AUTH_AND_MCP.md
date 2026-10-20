@@ -6,7 +6,7 @@ has already passed.
 
 ## Identity ownership
 
-Keycloak 26.7.3 owns email, password hashes, email verification, Google identity
+Keycloak 26.7.5 owns email, password hashes, email verification, Google identity
 links, account status, login sessions, OAuth grants, signing keys, and schema
 migrations. Its production data is stored in PostgreSQL 17 on the same host for
 the initial single-instance deployment. GraphMind stores no password and does
@@ -78,12 +78,28 @@ claude mcp add --transport http \
   graphmind https://rag.example.com/mcp
 ```
 
-Run `/mcp` in Claude Code and complete browser login. Claude Code must be version
+Run `/mcp` in Claude Code and complete browser login, or use the official
+`claude mcp login graphmind` command in an interactive terminal. The latter needs
+a saved named server; `--mcp-config` supplied to a model session does not add it
+to the CLI's saved configuration. Use `claude mcp get graphmind` to check that
+named server, not unrelated servers. Claude Code must be version
 2.1.64 or newer for the documented metadata override behavior; the exact tested
 version will be recorded during real-client acceptance. Readers install Claude
 Code or another MCP client, not the GraphMind server package.
 
 The tracked `.mcp.json` shows the same portable configuration without a secret.
+It sets a bounded per-server `timeout` of 150,000 milliseconds. Recent Claude
+HTTP clients otherwise have a separate 60-second first-response timer, which
+can expire before a slower local `ask` returns even when OAuth is valid.
+Choose a bounded client timeout that covers the configured server's total query
+budget; increasing it is not a model-speed or capacity qualification. See the
+[official MCP timeout documentation](https://code.claude.com/docs/en/mcp).
+For native Ollama Cloud requests use a name currently advertised by
+`https://ollama.com/api/tags` (the default is `gemma4:31b`); app/CLI cloud aliases
+need not appear in that native API's model list. See
+[Ollama Cloud](https://docs.ollama.com/cloud). Reader credentials remain on the
+server, never in MCP client configuration.
+
 Other clients must support Streamable HTTP, OAuth authorization-server discovery,
 authorization code with PKCE, and a pre-registered public client or an
 operator-approved registration. Untested clients are not advertised as verified.
@@ -121,11 +137,15 @@ session revocation. Do not concurrently edit these users through other APIs.
 ## Foundation safeguards
 
 Search and server-generated answers share running/waiting admission limits.
-HTTP/MCP reader work is bounded before executor submission. Cancellation or
-browser disconnect signals the worker; synchronous inference already in flight
-must finish or time out before its slot is released. Its cancelled result is
-discarded. Real remote-client cancellation remains an integration acceptance
-case, and installation-wide multi-process budgeting remains P7 work.
+HTTP/MCP reader work is bounded before executor submission. Cancellation of the
+awaiting adapter task, or browser disconnect, signals its worker; synchronous
+inference already in flight must finish or time out before releasing its slot.
+Do not equate this with immediate remote MCP cancellation: a separate
+`notifications/cancelled` message on the stateless transport may not signal the
+running worker. The client must ignore an abandoned reply, and admission remains
+occupied until the work exits. Qualify the exact client/protocol/proxy path;
+immediate worker interruption is not promised. Installation-wide multi-process
+budgeting remains P7 work.
 
 Sources are checked for active-version eligibility after retrieval/fetch and
 again after asynchronous authorization, before delivery. Version races return
@@ -175,6 +195,7 @@ for the exact log-canary check; source tests cannot qualify a configured proxy.
 Before P5/P6 gates can be called complete, run the same candidate through real
 SMTP/email verification and failure, Google sign-in/linking, restart-safe account
 revocation, two-user browser isolation, Claude Code login/refresh/reconnect, and
-an independent MCP SDK client. Repeat native runtime startup on Ubuntu 24.04,
-Windows 11, and Windows Server 2025. Record exact client/runtime versions and
-keep the admin console private.
+an independent MCP SDK client. Record native runtime startup on Ubuntu 24.04
+and exact client/runtime versions; keep the admin console private. Native
+Windows 11 and Windows Server 2025 component feasibility is a separate
+post-P6 checkpoint (phase P6.5), not evidence supplied by the Ubuntu run.

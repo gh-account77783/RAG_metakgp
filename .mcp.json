@@ -3,6 +3,7 @@
     "graphmind-remote": {
       "type": "http",
       "url": "https://your-graphmind-host.example/mcp",
+      "timeout": 150000,
       "oauth": {
         "clientId": "graphmind-claude-code",
         "callbackPort": 8765

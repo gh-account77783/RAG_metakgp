@@ -13,7 +13,7 @@ class RecoveryAssetTests(unittest.TestCase):
 
     def test_activation_uses_guard_force_login_and_keeps_mfa(self):
         policy = json.loads((ROOT / 'deploy/keycloak/graphmind-recovery.json').read_text('utf-8'))
-        self.assertEqual(policy['keycloakVersion'], '26.7.3')
+        self.assertEqual(policy['keycloakVersion'], '26.7.5')
         self.assertEqual(policy['realmSettings']['resetCredentialsFlow'], policy['flow']['alias'])
         self.assertEqual(policy['realmSettings']['attributes']['actionTokenGeneratedByUserLifespan.reset-credentials'], '900')
         self.assertEqual(policy['eventListener'], 'graphmind-password-revocation')
@@ -36,7 +36,7 @@ class RecoveryAssetTests(unittest.TestCase):
         messages = dict(line.split('=', 1) for line in
                         (theme / 'messages/messages_en.properties').read_text('utf-8').splitlines()
                         if line and not line.startswith('#'))
-        self.assertEqual(set(messages), {kind + suffix for kind in ('passwordReset', 'emailVerification')
+        self.assertEqual(set(messages), {kind + suffix for kind in ('passwordReset', 'emailVerification', 'identityProviderLink')
                                         for suffix in ('Subject', 'Body', 'BodyHtml')})
         self.assertEqual(messages['passwordResetSubject'], 'GraphMind - Reset your password')
         self.assertEqual(messages['emailVerificationSubject'], 'GraphMind - Verify your email address')
@@ -54,6 +54,30 @@ class RecoveryAssetTests(unittest.TestCase):
                 self.assertNotIn('<script', body)
         self.assertFalse((theme / 'html').exists())
         self.assertFalse((theme / 'text').exists())
+
+    def test_broker_link_copy_keeps_native_link_and_expiry_argument_positions(self):
+        theme = ROOT / 'deploy/keycloak/themes/graphmind/email'
+        messages = dict(line.split('=', 1) for line in
+                        (theme / 'messages/messages_en.properties').read_text('utf-8').splitlines()
+                        if line and not line.startswith('#'))
+        self.assertEqual(messages['identityProviderLinkSubject'], 'GraphMind - Confirm {0} sign-in')
+        for suffix in ('Body', 'BodyHtml'):
+            body = messages['identityProviderLink' + suffix]
+            # Native broker-link templates have a different MessageFormat
+            # signature from reset/verification: provider, realm, username,
+            # link, raw expiry, formatted expiry.
+            self.assertIn('{0}', body)
+            self.assertIn('{1}', body)
+            self.assertEqual(body.count('{3}'), 1)
+            self.assertEqual(body.count('{5}'), 1)
+            self.assertNotIn('{2}', body)  # Do not repeat upstream user input.
+            self.assertNotIn('{4}', body)
+            self.assertIn("didn''t", body)
+            self.assertIn('without your confirmation', body)
+            self.assertIn('Do not forward', body)
+            for forbidden in ('https://', '15 minutes', '<script', '<img', '<iframe'):
+                self.assertNotIn(forbidden, body)
+        self.assertIn('href="{3}"', messages['identityProviderLinkBodyHtml'])
 
 
 if __name__ == '__main__':

@@ -92,7 +92,7 @@ alternative, not an implemented dependency.
 
 | Area | Selected candidate | Boundary |
 | --- | --- | --- |
-| Credential/account authority | Keycloak `26.7.3` | External same-host native Java service; owns passwords, verification, Google links, status, grants, signing keys and migrations. |
+| Credential/account authority | Keycloak `26.7.5` | External same-host native Java service; owns passwords, verification, Google links, status, grants, signing keys and migrations. |
 | Identity database | PostgreSQL `17` | External same-host service; Keycloak's development-file database is excluded from production. |
 | Upstream identity | Google OpenID Connect through Keycloak | Google tokens are never accepted directly by GraphMind. Exact test client and callback remain deployment secrets. |
 | Browser/API service | Starlette `1.6.0` through MCP SDK ASGI app | Stateless GraphMind process; Keycloak introspection checks every request. |

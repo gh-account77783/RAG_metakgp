@@ -182,7 +182,9 @@ The legacy reasoning engine begins with three Chroma matches, explores only grap
 
 - Python 3.10 or later.
 - A running Neo4j instance (Neo4j 5 recommended).
-- An Ollama Cloud API key with access to `gemma4:31b-cloud`.
+- An Ollama Cloud API key with access to `gemma4:31b` on the native
+  `https://ollama.com` API. Check `/api/tags` for current names; app/CLI cloud
+  aliases are not necessarily names advertised by that API.
 - Optional CUDA-capable PyTorch installation for faster embedding/indexing work.
 
 On Windows, the evaluation runner imports `pyarrow.dataset` before embedding libraries to avoid a DLL load-order issue. Keep that import first in `run_eval_100.py`.
