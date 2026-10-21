@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+
 import hashlib
 import math
 import re
@@ -10,6 +12,8 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 
 from .contracts import AdapterStatus
+from ...locking import exclusive_file_lock
+from ...errors import QueryCapacityError
 from ...errors import (
     EmbeddingDimensionError,
     EmbeddingModelNotFoundError,
@@ -110,6 +114,7 @@ class OllamaEmbedding:
         self.transport = transport or UrllibJsonTransport()
         self._identity: tuple[str, str] | None = None
         self._identity_lock = threading.RLock()
+        self.inference_lock = None
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -228,13 +233,15 @@ class OllamaEmbedding:
             batch = list(texts[start : start + self.batch_size])
             self._resolve_identity()
             try:
-                payload = self.transport.request_json(
-                    "POST",
-                    f"{self.base_url}/api/embed",
-                    headers=self._headers(),
-                    payload={"model": self.model, "input": batch, "truncate": True},
-                    timeout=self.timeout,
-                )
+                with (exclusive_file_lock(self.inference_lock) if self.inference_lock is not None
+                      else nullcontext(True)) as acquired:
+                    if not acquired:
+                        raise QueryCapacityError("Another local inference operation is running; retry")
+                    body = {"model": self.model, "input": batch, "truncate": True}
+                    if self.inference_lock is not None:
+                        body["keep_alive"] = "0"
+                    payload = self.transport.request_json("POST", f"{self.base_url}/api/embed",
+                        headers=self._headers(), payload=body, timeout=self.timeout)
             except HttpStatusError as exc:
                 if exc.status == 404:
                     raise EmbeddingModelNotFoundError(

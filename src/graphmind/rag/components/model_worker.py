@@ -1,5 +1,6 @@
 """Internal inference subprocess; no provider credentials, hub download or code loading."""
 import json
+from contextlib import redirect_stdout
 from pathlib import Path
 import sys
 
@@ -7,6 +8,13 @@ from .local_inference import verify_model
 
 
 def run(request: dict) -> dict:
+    if request["operation"] == "tree":
+        from importlib.metadata import version
+        from pageindex.flash import page_index_flash
+        if version("pageindex") != "0.4.4":
+            raise ValueError("PageIndex version differs from the index recipe")
+        result = page_index_flash(Path(request["pdf_path"]), summary=False, optimize=False)
+        return {"ok": True, "structure": result["structure"], "toc_source": result.get("toc_source")}
     import torch
     torch.set_num_threads(int(request["threads"]))
     if request["operation"] == "rerank":
@@ -25,8 +33,17 @@ def run(request: dict) -> dict:
 
 if __name__ == "__main__":
     try:
+        import socket
+        original_connect = socket.socket.connect
+        def offline_connect(connection, address):
+            if connection.family in {socket.AF_INET, socket.AF_INET6}:
+                raise OSError("Inference workers have no network access")
+            return original_connect(connection, address)
+        socket.socket.connect = offline_connect
         request = json.loads(sys.stdin.read(4 * 1024 * 1024 + 1))
-        print(json.dumps(run(request), allow_nan=False))
+        with redirect_stdout(sys.stderr):
+            result = run(request)
+        print(json.dumps(result, allow_nan=False))
     except Exception:
         # Source text, model responses and service configuration never enter logs.
         print(json.dumps({"ok": False}))
