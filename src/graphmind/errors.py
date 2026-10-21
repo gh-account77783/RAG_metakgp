@@ -17,6 +17,10 @@ class UnsupportedFileError(GraphMindError):
     code = "unsupported_file"
 
 
+class EngineUnavailableError(GraphMindError):
+    code = "engine_unavailable"
+
+
 class EmptyDocumentError(GraphMindError):
     code = "empty_document"
 

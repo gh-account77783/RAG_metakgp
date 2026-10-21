@@ -374,11 +374,13 @@ def create_product_server(
         return result
 
     @server.tool(name="search_documents", structured_output=True)
-    async def search_documents(query: str, limit: int = 8) -> dict[str, Any]:
+    async def search_documents(query: str, limit: int = 8, engine_id: str = "graphmind",
+                               document_ids: list[str] | None = None) -> dict[str, Any]:
         """Search active documents and return evidence for client-side synthesis."""
         token, _ = await mcp_token()
         try:
-            return await checked_result(token, reader.search_documents, query, limit=limit)
+            return await checked_result(token, reader.search_documents, query, limit=limit,
+                                        engine_id=engine_id, document_ids=document_ids or ())
         except (GraphMindError, ValueError) as exc:
             raise ToolError(getattr(exc, "code", "invalid_request")) from exc
 
@@ -402,13 +404,15 @@ def create_product_server(
             raise ToolError(getattr(exc, "code", "invalid_request")) from exc
 
     @server.tool(name="ask", structured_output=True)
-    async def ask(question: str) -> dict[str, Any]:
+    async def ask(question: str, engine_id: str = "graphmind",
+                  document_ids: list[str] | None = None) -> dict[str, Any]:
         """Ask the configured server model for a grounded answer with citations."""
         token, _ = await mcp_token()
         try:
-            return await checked_result(token, reader.ask, question)
-        except GraphMindError as exc:
-            raise ToolError(exc.code) from exc
+            return await checked_result(token, reader.ask, question, engine_id=engine_id,
+                                        document_ids=document_ids or ())
+        except (GraphMindError, ValueError) as exc:
+            raise ToolError(getattr(exc, "code", "invalid_request")) from exc
 
     @server.resource(
         "graphmind://documents/{document_id}",
@@ -568,7 +572,9 @@ def create_product_server(
             limit = payload.get("limit", 8)
             if not isinstance(query, str) or not isinstance(limit, int):
                 raise ValueError("Invalid search request")
-            return await reader_work(reader.search_documents, query, limit=limit, request=request)
+            return await reader_work(reader.search_documents, query, limit=limit, request=request,
+                                     engine_id=payload.get("engine_id", "graphmind"),
+                                     document_ids=payload.get("document_ids", ()))
 
         return await browser_operation(request, run)
 
@@ -578,7 +584,9 @@ def create_product_server(
             question = payload.get("question")
             if not isinstance(question, str):
                 raise ValueError("Invalid question")
-            return await reader_work(reader.ask, question, request=request)
+            return await reader_work(reader.ask, question, request=request,
+                                     engine_id=payload.get("engine_id", "graphmind"),
+                                     document_ids=payload.get("document_ids", ()))
 
         return await browser_operation(request, run)
 

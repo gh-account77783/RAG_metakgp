@@ -155,3 +155,20 @@ class EvidenceRetriever(Protocol):
     """Evidence boundary consumed by the shared answer pipeline."""
 
     def retrieve(self, query: str) -> list[Evidence]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class QueryContext:
+    """Reader selection only; identity and source eligibility remain shared."""
+    engine_id: str = "graphmind"
+    document_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        import re
+        if not isinstance(self.engine_id, str) or self.engine_id not in {"graphmind", "tree_navigation", "multimodal"}:
+            raise ValueError("Unknown RAG engine")
+        if (not isinstance(self.document_ids, (tuple, list)) or len(self.document_ids) > 16
+                or any(not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value)
+                       for value in self.document_ids)):
+            raise ValueError("Invalid document selection")
+        object.__setattr__(self, "document_ids", tuple(dict.fromkeys(self.document_ids)))

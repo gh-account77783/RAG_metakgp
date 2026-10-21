@@ -65,6 +65,14 @@ remain host-local CLI operations.
 - `graphmind://documents/{document_id}` is the equivalent active-document
   resource.
 
+`ask` and `search_documents` also accept `engine_id="graphmind"` and an optional
+`document_ids` list of at most 16 opaque identifiers. Browser POST requests use
+the same fields. Omitted selection retains the existing GraphMind behavior;
+document selection restricts retrieval to those active, indexed sources. An
+unconfigured engine fails with `engine_unavailable`; it cannot silently fall
+back to GraphMind. Only GraphMind is configured by the current application.
+Selection shares the existing admission, identity, source checks and provider.
+
 The server uses MCP SDK 2.0.1, the 2026-07-28 protocol where supported, and the
 2025-11-25 compatibility path. It is stateless over Streamable HTTP. SSE and the
 legacy static/shared bearer key are removed from the release contract.

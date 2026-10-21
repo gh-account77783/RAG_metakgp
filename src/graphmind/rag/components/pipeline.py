@@ -7,13 +7,13 @@ import uuid
 from collections.abc import Sequence
 
 from ...errors import (
-    GraphMindError, QueryCancelledError, QueryCapacityError, RetryableQueryError,
+    EngineUnavailableError, GraphMindError, QueryCancelledError, QueryCapacityError, RetryableQueryError,
 )
 from ...metadata import MetadataStore
 from ...providers import AnswerProvider
 from ...sources import SourceService
 from .citations import citations_for_answer
-from .contracts import Evidence, EvidenceRetriever, Outcome, QueryResult
+from .contracts import Evidence, EvidenceRetriever, Outcome, QueryContext, QueryResult
 
 
 class AnswerService:
@@ -100,7 +100,18 @@ class AnswerService:
             },
         )
 
-    def search(self, question: str, *, cancel_event: threading.Event | None = None) -> list[Evidence]:
+    def _retrieve(self, question: str, context: QueryContext | None) -> list[Evidence]:
+        if context is None:
+            return self.retrieval.retrieve(question)
+        scoped = getattr(self.retrieval, "retrieve_scoped", None)
+        if scoped is not None:
+            return scoped(question, context)
+        if context.engine_id != "graphmind" or context.document_ids:
+            raise EngineUnavailableError("This reader selection is not available")
+        return self.retrieval.retrieve(question)
+
+    def search(self, question: str, *, cancel_event: threading.Event | None = None,
+               context: QueryContext | None = None) -> list[Evidence]:
         """Share answer admission limits with client-side synthesis searches."""
         if cancel_event is not None and cancel_event.is_set():
             raise QueryCancelledError("Query was cancelled")
@@ -109,7 +120,7 @@ class AnswerService:
         try:
             if cancel_event is not None and cancel_event.is_set():
                 raise QueryCancelledError("Query was cancelled")
-            evidence = self.retrieval.retrieve(question)
+            evidence = self._retrieve(question, context)
             if cancel_event is not None and cancel_event.is_set():
                 raise QueryCancelledError("Query was cancelled")
             self.sources.assert_current(item.version_id for item in evidence)
@@ -118,7 +129,8 @@ class AnswerService:
             self._capacity.release()
 
     def query_with_evidence(
-        self, question: str, *, cancel_event: threading.Event | None = None
+        self, question: str, *, cancel_event: threading.Event | None = None,
+        context: QueryContext | None = None,
     ) -> tuple[QueryResult, tuple[Evidence, ...]]:
         request_id = str(uuid.uuid4())
         started = time.perf_counter()
@@ -162,7 +174,7 @@ class AnswerService:
         try:
             if cancel_event is not None and cancel_event.is_set():
                 raise QueryCancelledError("Query was cancelled")
-            evidence = tuple(self.retrieval.retrieve(question))
+            evidence = tuple(self._retrieve(question, context))
             result = self._answer_with_evidence(
                 question,
                 evidence,
@@ -203,9 +215,10 @@ class AnswerService:
             self._capacity.release()
 
     def query(
-        self, question: str, *, cancel_event: threading.Event | None = None
+        self, question: str, *, cancel_event: threading.Event | None = None,
+        context: QueryContext | None = None,
     ) -> QueryResult:
-        result, _ = self.query_with_evidence(question, cancel_event=cancel_event)
+        result, _ = self.query_with_evidence(question, cancel_event=cancel_event, context=context)
         return result
 
 

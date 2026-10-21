@@ -15,6 +15,7 @@ from .sources import SourceService
 from .rag.components.indexes import IndexRepository
 from .rag.components.artifacts import DerivedArtifactStore
 from .rag.components.local_inference import LocalCrossEncoder, LocalInference
+from .rag.components.router import EngineRouter
 from .rag.graphmind.hybrid import HybridGraphMind
 from .parsing import IsolatedExtractor
 from .providers import AnswerProvider, OllamaProvider
@@ -123,9 +124,12 @@ class GraphMindApplication:
             max_evidence=settings.retrieval_max_evidence,
             min_vector_score=settings.retrieval_min_vector_score,
             max_question_chars=settings.max_question_chars,
+            indexes=self.indexes,
+            sources=self.sources,
         )
         if self.hybrid is not None:
             self.retrieval = self.hybrid
+        self.router = EngineRouter({"graphmind": self.retrieval})
         selected_provider = provider or OllamaProvider(
             settings.ollama_base_url,
             settings.ollama_api_key,
@@ -138,7 +142,7 @@ class GraphMindApplication:
         )
         self.answers = AnswerService(
             self.metadata,
-            self.retrieval,
+            self.router,
             selected_provider,
             max_concurrent_queries=settings.max_concurrent_queries,
             max_queued_queries=settings.max_queued_queries,

@@ -7,7 +7,7 @@ import json
 import math
 import re
 
-from ...errors import EmbeddingMismatchError, ManifestUnavailableError, PublicationError, QueryBudgetError
+from ...errors import EngineUnavailableError, EmbeddingMismatchError, ManifestUnavailableError, PublicationError, QueryBudgetError
 from ...sources import SourceService
 from ..components.artifacts import DerivedArtifactStore
 from ..components.contracts import Evidence, Job
@@ -146,12 +146,25 @@ class HybridGraphMind:
                 item["score"] = float(score)
         return sorted(records, key=lambda item: (-item["score"], item["unit_id"]))
 
-    def retrieve(self, query: str) -> list[Evidence]:
+    def retrieve_scoped(self, query, context):
+        if context.engine_id != "graphmind":
+            raise EngineUnavailableError("This backend serves GraphMind only")
+        return self.retrieve(query, document_ids=context.document_ids)
+
+    def retrieve(self, query: str, *, document_ids: tuple[str, ...] = ()) -> list[Evidence]:
         if not query.strip():
             return []
         if len(query) > self.max_question_chars:
             raise QueryBudgetError("Question exceeds the configured character budget")
+        for identifier in document_ids:
+            self.sources.active(identifier)
         heads = {item.index_id: item for item in self.indexes.current("graphmind", revision=REVISION)}
+        if document_ids:
+            heads = {key: item for key, item in heads.items()
+                     if self.indexes.metadata.version(item.source_version_id).document_id in document_ids}
+            if set(document_ids) - {self.indexes.metadata.version(item.source_version_id).document_id
+                                    for item in heads.values()}:
+                raise ManifestUnavailableError("Selected documents have no ready hybrid index")
         expected = self.recipe().fingerprint
         if any(item.recipe.fingerprint != expected for item in heads.values()):
             raise EmbeddingMismatchError("Active GraphMind recipes differ; reindex explicitly")

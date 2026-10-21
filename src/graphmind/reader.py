@@ -7,7 +7,7 @@ from contextlib import closing
 from typing import Any
 
 from .errors import ReaderQueryError
-from .rag.components.contracts import Outcome
+from .rag.components.contracts import Outcome, QueryContext
 from .sources import SourceService
 
 
@@ -31,14 +31,20 @@ class ReaderService:
         }
 
     def search_documents(self, query: str, *, limit: int = 8,
-                         cancel_event: threading.Event | None = None) -> dict[str, Any]:
+                         cancel_event: threading.Event | None = None,
+                         engine_id: str = "graphmind", document_ids: tuple[str, ...] = ()) -> dict[str, Any]:
         if limit not in range(1, 21):
             raise ValueError("limit must be between 1 and 20")
-        evidence = self.application.answers.search(query, cancel_event=cancel_event)[:limit]
+        context = QueryContext(engine_id, document_ids)
+        options = {"context": context} if engine_id != "graphmind" or document_ids else {}
+        evidence = self.application.answers.search(query, cancel_event=cancel_event, **options)[:limit]
         return {"query": query, "results": [self._evidence(item) for item in evidence]}
 
-    def ask(self, question: str, *, cancel_event: threading.Event | None = None) -> dict[str, Any]:
-        result = self.application.answers.query(question, cancel_event=cancel_event)
+    def ask(self, question: str, *, cancel_event: threading.Event | None = None,
+            engine_id: str = "graphmind", document_ids: tuple[str, ...] = ()) -> dict[str, Any]:
+        context = QueryContext(engine_id, document_ids)
+        options = {"context": context} if engine_id != "graphmind" or document_ids else {}
+        result = self.application.answers.query(question, cancel_event=cancel_event, **options)
         if result.outcome is Outcome.ERROR:
             raise ReaderQueryError(str(result.verification.get("error_code", "query_failed")))
         return result.as_dict()
