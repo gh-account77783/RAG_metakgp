@@ -162,6 +162,7 @@ class QueryContext:
     """Reader selection only; identity and source eligibility remain shared."""
     engine_id: str = "graphmind"
     document_ids: tuple[str, ...] = ()
+    cancel_event: Any = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         import re

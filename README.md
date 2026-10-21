@@ -19,9 +19,32 @@ full frozen evaluation and manual factual/citation review remain open. Guided
 installation, full native application services/reboot, resource qualification,
 backup/restore, consolidated security/edge cases and release rights remain
 P7/P8. Windows feasibility did not qualify the complete model/RAG stack.
-No selectable RAG architecture catalogue is implemented at this checkpoint.
+The current CLI/MCP catalogue implements GraphMind and bounded PDF tree
+navigation. The browser form currently uses GraphMind. The visual namespace
+remains unavailable.
 
 The original MetaKGP crawler and reasoning code remains in the repository as a legacy test prototype. It is not part of the generic package path and is not intended for the final user distribution.
+
+## PDF tree navigation
+
+Install the `tree` extra with the checked-in dependency constraints, or use a
+qualified [offline bundle](documentation/RELEASE_BUNDLES.md). Set
+`enabled_engines = ["tree_navigation"]` in the host configuration for vectorless
+PDF use; this mode needs the configured answer provider and no embedding or
+Neo4j service. Both engines can be enabled for a shared source.
+
+```text
+graphmind --config reader.toml import manual.pdf --engines tree_navigation
+graphmind --config reader.toml status
+graphmind --config reader.toml query "What is the maintenance interval?" --engine tree_navigation --document DOCUMENT_ID
+```
+
+Select one PDF per question. Indexing extracts its hierarchy locally without
+model-written summaries; bounded navigation and generation use the configured
+answer model and original pages. Citations identify the exact active version
+and page. Text-bearing PDFs are supported; OCR is excluded. Failed replacement
+builds preserve the previous source and ready indexes. Status reports each
+engine's state, and selected engines share one source/original and durable job.
 
 ## Generic document ingestion milestone
 
@@ -76,15 +99,18 @@ results. It does not treat the development JSONL snapshot as a supported user
 format. A passing automatic score still requires human review for unsupported
 additional claims.
 
-On the Ubuntu 24.04 EC2 test host, first run `deploy/legacy/test-deploy.sh` to validate the
-package and start the localhost-only Neo4j container. After committing and
-pulling the P4 candidate, run:
+With the configured model/store services already available, run the evaluation
+CLI against an isolated data root:
 
 ```bash
-bash tools/evaluation/p4-evaluate.sh --install-ollama --pull-models
+graphmind --config reader.toml evaluate \
+  --fixture tests/fixtures/evaluation/metakgp_50.json \
+  --source legacy/Crawler/cleaned_wiki.jsonl \
+  --work-dir .evaluation/local --report .evaluation/local-report.json --label local
 ```
 
-The script pins Ollama 0.34.0, verifies local `bge-m3` and `gemma4:e2b`, records
+The historical shell wrapper `tools/evaluation/p4-evaluate.sh` pins Ollama 0.34.0,
+verifies local `bge-m3` and `gemma4:e2b`, records
 their full digests, runs the 50-case local chunk-scope baseline, then compares
 vector-only and document-scope retrieval. Add `--with-hosted` after configuring
 the private dotenv reported by `deploy/legacy/test-deploy.sh`, then use `--hosted-only` to run
@@ -161,7 +187,7 @@ product pipeline or bundled user data.
 ├── src/graphmind/               # Active installable product, one auth/MCP/reader boundary
 │   ├── rag/
 │   │   ├── graphmind/           # Current vector + document-reference engine
-│   │   ├── tree_navigation/     # Reserved; not implemented/selectable
+│   │   ├── tree_navigation/     # Bounded PageIndex/PDF navigation
 │   │   ├── multimodal/          # Reserved; not implemented/selectable
 │   │   └── components/          # Shared contracts/pipeline/citations/embeddings/vector store
 │   └── web/                    # Resource loader; generated static files only in builds

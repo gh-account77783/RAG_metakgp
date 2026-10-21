@@ -1,7 +1,10 @@
 # Test layout
 
 All test code and fixtures live outside `src/` and are excluded from the wheel
-and source distribution. Run the existing offline suite from the repository:
+and source distribution. Install the `test` extra under the core, platform and
+engine constraints, then run the offline suite from the repository. The test
+extra includes real local PageIndex/PDF raster dependencies; model weights and
+PyTorch inference are separate explicit native checks.
 
 ```console
 python -B -m unittest discover -s tests -t . -v
@@ -10,10 +13,11 @@ python -B -m unittest discover -s tests -t . -v
 - `contracts/`: public boundaries, identity/browser/MCP, packaging, compatibility
   and hardening regressions.
 - `engines/graphmind/`: current retrieval, publication, models and evaluation.
+- `engines/test_tree_navigation.py`: vector/graph-free PDF ingestion/navigation,
+  shared source publication, restart and deletion.
 - `unit/`: configuration, durable jobs, parsing and source lifecycle.
 - `legacy/`: preserved crawler/text prototype regression tests.
-- `support/`: shared synthetic fixtures and stable checkout paths; no tests import
-  another test module to obtain application or identity fixtures.
+- `support/`: shared synthetic fixtures and stable checkout paths.
 - `fixtures/`: immutable evaluation and small ingestion fixtures.
 - `integration/`: explicit real-store checks, not part of default offline
   discovery. Run through `tools/run_real_acceptance.py --stores` with a separately

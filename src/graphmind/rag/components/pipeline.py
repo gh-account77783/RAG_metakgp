@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from dataclasses import replace
 from collections.abc import Sequence
 
 from ...errors import (
@@ -100,11 +101,14 @@ class AnswerService:
             },
         )
 
-    def _retrieve(self, question: str, context: QueryContext | None) -> list[Evidence]:
+    def _retrieve(self, question: str, context: QueryContext | None,
+                  cancel_event: threading.Event | None = None) -> list[Evidence]:
         if context is None:
             return self.retrieval.retrieve(question)
         scoped = getattr(self.retrieval, "retrieve_scoped", None)
         if scoped is not None:
+            if cancel_event is not None:
+                context = replace(context, cancel_event=cancel_event)
             return scoped(question, context)
         if context.engine_id != "graphmind" or context.document_ids:
             raise EngineUnavailableError("This reader selection is not available")
@@ -120,7 +124,7 @@ class AnswerService:
         try:
             if cancel_event is not None and cancel_event.is_set():
                 raise QueryCancelledError("Query was cancelled")
-            evidence = self._retrieve(question, context)
+            evidence = self._retrieve(question, context, cancel_event)
             if cancel_event is not None and cancel_event.is_set():
                 raise QueryCancelledError("Query was cancelled")
             self.sources.assert_current(item.version_id for item in evidence)
@@ -174,7 +178,7 @@ class AnswerService:
         try:
             if cancel_event is not None and cancel_event.is_set():
                 raise QueryCancelledError("Query was cancelled")
-            evidence = tuple(self._retrieve(question, context))
+            evidence = tuple(self._retrieve(question, context, cancel_event))
             result = self._answer_with_evidence(
                 question,
                 evidence,

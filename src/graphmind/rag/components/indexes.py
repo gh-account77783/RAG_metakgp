@@ -45,6 +45,12 @@ class IndexRepository:
             return self._record(connection.execute(
                 "SELECT * FROM engine_indexes WHERE index_id = ?", (index_id,)).fetchone())
 
+    def for_document(self, document_id: str) -> list[EngineIndex]:
+        with self.metadata.connection() as connection:
+            return [self._record(row) for row in connection.execute(
+                """SELECT i.* FROM engine_indexes i JOIN versions v ON v.version_id=i.source_version_id
+                   WHERE v.document_id=? ORDER BY i.created_at,i.index_id""", (document_id,))]
+
     def prepare(self, source_version_id: str, recipe: IndexRecipe) -> EngineIndex:
         installation = self.metadata.installation_id()
         with self.metadata.transaction() as connection:

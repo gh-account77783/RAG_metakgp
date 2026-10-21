@@ -59,7 +59,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install package and test dependency
-        run: python -m pip install --constraint config/constraints/core-py313.txt --constraint config/constraints/linux-py313.txt ".[test]" setuptools==80.9.0 wheel==0.45.1
+        run: python -m pip install --constraint config/constraints/core-py313.txt --constraint config/constraints/linux-py313.txt --constraint config/constraints/engines-py313.txt ".[test]" setuptools==80.9.0 wheel==0.45.1
       - name: Check constrained environment
         run: python -m pip check
       - name: Verify CLI help has no service dependency
@@ -89,7 +89,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-      - run: python -m pip install --constraint config/constraints/core-py313.txt --constraint config/constraints/linux-py313.txt ".[test]"
+      - run: python -m pip install --constraint config/constraints/core-py313.txt --constraint config/constraints/linux-py313.txt --constraint config/constraints/engines-py313.txt ".[test]"
       - name: Test real stores with disposable fixtures
         env:
           GRAPHMIND_RUN_INTEGRATION: "1"

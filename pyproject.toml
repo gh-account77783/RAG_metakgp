@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["build==1.6.0"]
+test = ["build==1.6.0", "pageindex==0.4.4", "pillow==13.0.0"]
 tree = ["pageindex==0.4.4"]
 rerank = ["sentence-transformers==6.1.0", "torch==2.14.1"]
 visual = [

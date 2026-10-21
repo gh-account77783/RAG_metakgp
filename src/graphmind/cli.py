@@ -10,7 +10,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from .config import Settings
-from .rag.components.contracts import Job, Outcome
+from .rag.components.contracts import Job, Outcome, QueryContext
 from .errors import ConfigurationError, GraphMindError, JobNotFoundError
 from .evaluation import EvaluationRunner, FrozenEvaluationDataset
 from .providers import ExtractiveProvider
@@ -40,6 +40,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     import_parser.add_argument("path", type=Path)
     import_parser.add_argument("--enqueue-only", action="store_true")
+    import_parser.add_argument("--engines", help="Comma-separated configured engine identifiers")
     import_parser.add_argument(
         "--csv-delimiter", choices=("auto", "comma", "semicolon", "tab", "pipe")
     )
@@ -49,6 +50,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     reindex_parser.add_argument("path", type=Path)
     reindex_parser.add_argument("--enqueue-only", action="store_true")
+    reindex_parser.add_argument("--engines", help="Comma-separated configured engine identifiers")
     reindex_parser.add_argument(
         "--csv-delimiter", choices=("auto", "comma", "semicolon", "tab", "pipe")
     )
@@ -84,6 +86,8 @@ def _parser() -> argparse.ArgumentParser:
 
     query_parser = subcommands.add_parser("query", help="Query active documents")
     query_parser.add_argument("question")
+    query_parser.add_argument("--engine", choices=("graphmind", "tree_navigation", "multimodal"), default="graphmind")
+    query_parser.add_argument("--document", action="append", default=[], help="Active source document ID")
     query_parser.add_argument(
         "--extractive",
         action="store_true",
@@ -158,6 +162,12 @@ def _status(app: GraphMindApplication) -> dict[str, object]:
                 "display_name": item.display_name,
                 "active_version_id": item.active_version_id,
                 "deleted": item.deleted_at is not None,
+                "indexes": [{"index_id": index.index_id, "engine_id": index.recipe.engine_id,
+                             "source_version_id": index.source_version_id, "status": index.status.value,
+                             "failure_code": index.failure_code,
+                             "active": bool((head := app.indexes.ready(item.document_id, index.recipe.engine_id))
+                                            and head.index_id == index.index_id)}
+                            for index in app.indexes.for_document(item.document_id)],
             }
             for item in app.metadata.list_documents()
         ],
@@ -281,7 +291,9 @@ def main(argv: list[str] | None = None) -> None:
                 if not all(item["available"] for item in statuses):
                     raise SystemExit(2)
             elif args.command in {"import", "reindex"}:
-                submission = app.ingestion.prepare_import(args.path)
+                options = ({"engines": tuple(value.strip() for value in args.engines.split(",") if value.strip())}
+                           if args.engines is not None else {})
+                submission = app.ingestion.prepare_import(args.path, **options)
                 _report_submission(app, submission.job, enqueue_only=args.enqueue_only,
                                    warnings=submission.warnings)
             elif args.command == "delete":
@@ -305,7 +317,10 @@ def main(argv: list[str] | None = None) -> None:
             elif args.command == "status":
                 print(json.dumps(_status(app), indent=2))
             elif args.command == "embedding-status":
-                active = sorted(app.metadata.active_embedding_fingerprints())
+                if "graphmind" not in settings.enabled_engines:
+                    raise ConfigurationError("GraphMind is not enabled for this installation")
+                active = sorted({json.loads(index.recipe.configuration_json)["embedding"]
+                                 for index in app.indexes.current("graphmind")})
                 current = app.vector.embedding_fingerprint
                 print(
                     json.dumps(
@@ -322,7 +337,9 @@ def main(argv: list[str] | None = None) -> None:
                     )
                 )
             elif args.command == "query":
-                result = app.answers.query(args.question)
+                options = ({"context": QueryContext(args.engine, tuple(args.document))}
+                           if args.engine != "graphmind" or args.document else {})
+                result = app.answers.query(args.question, **options)
                 print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
                 if result.outcome is Outcome.ERROR:
                     raise SystemExit(3)

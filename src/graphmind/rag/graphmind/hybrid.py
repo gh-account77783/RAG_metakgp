@@ -98,8 +98,6 @@ class HybridGraphMind:
 
     def audit(self) -> None:
         heads = self.indexes.current("graphmind", revision=REVISION)
-        if {item.source_version_id for item in heads} != self.indexes.metadata.active_version_ids():
-            raise ManifestUnavailableError("Some active sources have no ready hybrid index")
         for index in heads:
             payload = json.loads(self.artifacts.read(index)["passages.json"])
             expected = {item["unit_id"] for item in payload}

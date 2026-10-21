@@ -122,6 +122,7 @@ def main() -> None:
         python = target_venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         run([python, "-m", "pip", "install", "--constraint", snapshot / "config/constraints/core-py313.txt",
              "--constraint", snapshot / "config/constraints/linux-py313.txt",
+             "--constraint", snapshot / "config/constraints/engines-py313.txt",
              f"{wheel}[test]"], cwd=root, env=env)
         run([python, "-m", "pip", "check"], cwd=root, env=env)
         run([python, "-c", "import graphmind, pathlib, sys; p=pathlib.Path(graphmind.__file__).resolve(); "

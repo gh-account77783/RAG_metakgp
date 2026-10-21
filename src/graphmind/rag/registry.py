@@ -1,7 +1,7 @@
 """Explicit engine catalogue metadata, not installation or runtime readiness.
 
-Only GraphMind is implemented. Reserving namespaces must not make the future
-engines selectable or trigger upstream imports, downloads or network access.
+GraphMind and bounded PDF tree navigation are implemented. Catalogue facts do
+not enable engines or trigger imports, downloads or network access.
 """
 from dataclasses import dataclass
 
@@ -17,7 +17,7 @@ class EngineSpec:
 
 ENGINE_CATALOG = (
     EngineSpec("graphmind", "Connected Knowledge", True),
-    EngineSpec("tree_navigation", "Long Documents", False),
+    EngineSpec("tree_navigation", "Long Documents", True),
     EngineSpec("multimodal", "Visual Documents", False),
 )
 

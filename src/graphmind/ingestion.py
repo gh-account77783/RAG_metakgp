@@ -19,6 +19,7 @@ from .errors import (
     DocumentNotFoundError,
     DocumentTooLargeError,
     EmptyDocumentError,
+    EngineUnavailableError,
     GraphMindError,
     JobLeaseError,
     PathValidationError,
@@ -183,7 +184,7 @@ class IngestionService:
         vector: VectorStore,
         graph: GraphStore,
         installation_id: str,
-        embedding_fingerprint: str,
+        embedding_fingerprint: str | Callable[[], str],
         files: FileStore,
         extractor: IsolatedExtractor,
         *,
@@ -197,12 +198,21 @@ class IngestionService:
         self.vector = vector
         self.graph = graph
         self.installation_id = installation_id
-        self.embedding_fingerprint = embedding_fingerprint
+        self._embedding_fingerprint = embedding_fingerprint
         self.files = files
         self.extractor = extractor
         self.indexes = indexes or IndexRepository(metadata)
         self.backend, self.artifacts = backend, artifacts
+        self.backends = {"graphmind": backend} if backend is not None else {}
         self.failure_injector = failure_injector
+
+    @property
+    def embedding_fingerprint(self) -> str:
+        return self._embedding_fingerprint() if callable(self._embedding_fingerprint) else self._embedding_fingerprint
+
+    def _recipes(self, version, engines):
+        return [self.backends[engine].recipe() if engine in self.backends else legacy_graphmind_recipe(version)
+                for engine in engines]
 
     @property
     def txt_chunker_fingerprint(self) -> str:
@@ -247,8 +257,19 @@ class IngestionService:
             raise UnsupportedFileError("This compatibility entry point accepts TXT files only")
         return self.prepare_import(source)
 
-    def prepare_import(self, source: Path) -> ImportSubmission:
+    def prepare_import(self, source: Path, *, engines: tuple[str, ...] | None = None) -> ImportSubmission:
+        selected = tuple(sorted(set(self.settings.enabled_engines if engines is None else engines)))
+        if not selected or set(selected) - set(self.settings.enabled_engines):
+            raise EngineUnavailableError("Select one or more configured engines")
+        if any(engine != "graphmind" and engine not in self.backends for engine in selected):
+            raise EngineUnavailableError("A selected engine is not implemented or configured")
         resolved, raw, suffix = self._read_source(source)
+        if engines is None and suffix != ".pdf":
+            selected = tuple(engine for engine in selected if engine == "graphmind")
+            if not selected:
+                raise UnsupportedFileError("No configured engine accepts this format")
+        if any(engine in {"tree_navigation", "multimodal"} for engine in selected) and suffix != ".pdf":
+            raise UnsupportedFileError("Tree and visual engines accept text-bearing PDFs only")
         extraction = self.extractor.extract(raw, suffix)
 
         source_key = _hash(os.path.normcase(str(resolved)).encode("utf-8"))
@@ -286,11 +307,17 @@ class IngestionService:
         chunker_fingerprint = (
             self.txt_chunker_fingerprint if suffix == ".txt" else self.segment_chunker_fingerprint
         )
+        embedding_fingerprint = self.embedding_fingerprint if "graphmind" in selected else "source-only-v1"
         version_material = (
             f"{content_hash}\0{extraction.extractor_fingerprint}\0{chunker_fingerprint}"
-            f"\0{self.embedding_fingerprint}"
+            f"\0{embedding_fingerprint}"
         )
         version_id = str(uuid.uuid5(uuid.UUID(document_id), version_material))
+        current = self.metadata.version(existing.active_version_id) if existing and existing.active_version_id else None
+        if (current is not None and (self.backend is not None or "graphmind" not in selected)
+                and current.content_hash == content_hash and current.extractor_fingerprint == extraction.extractor_fingerprint
+                and current.chunker_fingerprint == chunker_fingerprint):
+            version_id, embedding_fingerprint = current.version_id, current.embedding_fingerprint
         if suffix == ".txt":
             chunks = deterministic_chunks(
                 canonical_text,
@@ -317,7 +344,7 @@ class IngestionService:
             content_hash=content_hash,
             extractor_fingerprint=extraction.extractor_fingerprint,
             chunker_fingerprint=chunker_fingerprint,
-            embedding_fingerprint=self.embedding_fingerprint,
+            embedding_fingerprint=embedding_fingerprint,
             private_file_ref=private_ref,
             source_size=len(raw),
             expected_chunk_count=len(chunks),
@@ -326,10 +353,12 @@ class IngestionService:
             created_at=utc_now(),
         )
         idempotency_key = f"import:{version_id}"
-        recipe = self.backend.recipe() if self.backend is not None else legacy_graphmind_recipe(version)
-        head = self.indexes.ready(document_id, "graphmind")
-        if self.backend is not None:
-            idempotency_key += ":" + recipe.fingerprint
+        recipes = self._recipes(version, selected)
+        legacy_only = selected == ("graphmind",) and self.backend is None
+        heads_ready = all((head := self.indexes.ready(document_id, recipe.engine_id)) is not None
+                          and head.recipe == recipe for recipe in recipes)
+        if not legacy_only:
+            idempotency_key += ":" + _hash("\n".join(recipe.fingerprint for recipe in recipes).encode())
         job_id = str(uuid.uuid5(uuid.UUID(self.installation_id), idempotency_key))
         stored_version = self.metadata.version(version_id)
         stored_job = self.metadata.job(job_id)
@@ -341,7 +370,7 @@ class IngestionService:
             and existing.active_version_id == version_id
             and stored_job is not None
             and stored_job.status is JobStatus.SUCCEEDED
-            and head is not None and head.recipe == recipe
+            and heads_ready
         ):
             return ImportSubmission(existing, stored_version, stored_job, extraction.warnings)
 
@@ -354,7 +383,7 @@ class IngestionService:
         document = stored_document
         self.metadata.put_version(version)
         self.metadata.replace_chunks(version_id, chunks)
-        index = self.indexes.prepare(version_id, recipe)
+        targets = [self.indexes.prepare(version_id, recipe).index_id for recipe in recipes]
         self._fail("after_metadata")
         job = self.metadata.put_job(
             Job(
@@ -366,14 +395,14 @@ class IngestionService:
                 status=JobStatus.QUEUED,
                 attempt_count=0,
                 available_at=utc_now(),
-                payload_json=(json.dumps({"schema_version": 1, "index_ids": [index.index_id]},
+                payload_json=(json.dumps({"schema_version": 1, "index_ids": targets},
                                          sort_keys=True, separators=(",", ":"))
-                              if self.backend is not None else "{}"),
+                              if not legacy_only else "{}"),
             ),
             max_queued_jobs=self.settings.max_queued_jobs,
         )
         if job.status is JobStatus.SUCCEEDED and (existing is None or existing.active_version_id != version_id
-                                                 or head is None or head.recipe != recipe):
+                                                 or not heads_ready):
             self.metadata.retry_job(job.job_id, include_succeeded=True)
             job = self.metadata.job(job.job_id) or job
         return ImportSubmission(document, version, job, extraction.warnings)
@@ -416,7 +445,7 @@ class IngestionService:
         if not self.metadata.update_job_progress(job.job_id, job.lease_owner, value):
             raise JobLeaseError("The ingestion job lease was lost")
 
-    def _process_import(self, job: Job) -> None:
+    def _process_import(self, job: Job, *, publish: bool = True) -> None:
         document = self.metadata.document(job.document_id)
         version = self.metadata.version(job.version_id)
         if document is None or version is None:
@@ -441,7 +470,7 @@ class IngestionService:
                     self.graph.chunk_ids_for_version(self.installation_id, version.version_id),
                 )
                 if all(item == expected_ids for item in stored_ids):
-                    self.indexes.complete(job, index.index_id, inventory, activate=True)
+                    self.indexes.complete(job, index.index_id, inventory, activate=publish)
                     self._progress(job, 99)
                     return
                 raise PublicationError("The active version does not match both retrieval stores")
@@ -466,7 +495,8 @@ class IngestionService:
             self._progress(job, 90)
             self._fail("before_publish")
             self.indexes.complete(job, index.index_id, inventory)
-            self.metadata.publish_version(version.version_id, job=job)
+            if publish:
+                self.metadata.publish_version(version.version_id, job=job)
             self._progress(job, 99)
             self._fail("after_publish")
         except Exception as exc:
@@ -481,18 +511,24 @@ class IngestionService:
 
     def _process_delete(self, job: Job) -> None:
         self.metadata.assert_job_lease(job)
+        with self.metadata.connection() as connection:
+            has_graphmind = connection.execute(
+                """SELECT 1 FROM engine_indexes i JOIN versions v ON v.version_id=i.source_version_id
+                   WHERE v.document_id=? AND i.engine_id='graphmind' LIMIT 1""", (job.document_id,)).fetchone() is not None
         self.indexes.invalidate_document(job)
-        if self.backend is not None:
+        if has_graphmind and self.backend is not None:
             self.backend.vector.delete_document(self.installation_id, job.document_id)
         from .rag.graphmind.lexical import LexicalIndex
         LexicalIndex(self.indexes).delete_document(job)
         if self.artifacts is not None:
             self.artifacts.delete_document(job)
-        self.vector.delete_document(self.installation_id, job.document_id)
+        if has_graphmind:
+            self.vector.delete_document(self.installation_id, job.document_id)
         self._progress(job, 35)
         self._fail("after_delete_vector")
         self.metadata.assert_job_lease(job)
-        self.graph.delete_document(self.installation_id, job.document_id)
+        if has_graphmind:
+            self.graph.delete_document(self.installation_id, job.document_id)
         self._progress(job, 70)
         self._fail("after_delete_graph")
         self.metadata.assert_job_lease(job)
@@ -502,27 +538,13 @@ class IngestionService:
 
     def process_job(self, job: Job) -> None:
         self.metadata.assert_job_lease(job)
-        if job.payload_json != "{}" and job.operation in {"import_txt", "import_document", "build_index"}:
+        if job.operation == "build_index" or (job.payload_json != "{}" and job.operation in {"import_txt", "import_document"}):
             targets = self.indexes._targets(job)
-            if (self.backend is None or targets != [self.backend.recipe().index_id(
-                    self.installation_id, job.version_id)]):
-                # Legacy derived jobs are handled below by the existing backend.
-                version = self.metadata.version(job.version_id)
-                if version is None or targets != [legacy_graphmind_recipe(version).index_id(
-                        self.installation_id, job.version_id)]:
-                    raise PublicationError("This index backend is not configured")
-            else:
-                self._process_selected(job, targets)
-                return
-        if job.operation in {"import_txt", "import_document"}:
-            self._process_import(job)
+            self._process_selected(job, targets)
             return
-        if job.operation == "build_index":
-            version = self.metadata.version(job.version_id)
-            targets = self.indexes._targets(job)
-            if version is None or targets != [legacy_graphmind_recipe(version).index_id(
-                    self.installation_id, job.version_id)]:
-                raise PublicationError("This index backend is not implemented")
+        if job.operation in {"import_txt", "import_document"}:
+            if "graphmind" not in self.settings.enabled_engines:
+                raise EngineUnavailableError("The queued GraphMind backend is not configured")
             self._process_import(job)
             return
         if job.operation == "delete_document":
@@ -543,7 +565,16 @@ class IngestionService:
             if not active:
                 self.metadata.set_version_status(job.version_id, VersionStatus.INDEXING, job=job)
             for index_id in targets:
-                self.backend.build(job, index_id)
+                index = self.indexes.index(index_id)
+                if index is None or index.recipe.engine_id not in self.settings.enabled_engines:
+                    raise EngineUnavailableError("The queued index backend is not configured")
+                backend = self.backends.get(index.recipe.engine_id)
+                if backend is not None and backend.recipe() == index.recipe:
+                    backend.build(job, index_id)
+                elif index.recipe == legacy_graphmind_recipe(version):
+                    self._process_import(job, publish=False)
+                else:
+                    raise EngineUnavailableError("The queued index recipe is not configured")
             self._fail("before_publish")
             if active:
                 self.indexes.activate(job)

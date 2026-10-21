@@ -70,7 +70,9 @@ remain host-local CLI operations.
 the same fields. Omitted selection retains the existing GraphMind behavior;
 document selection restricts retrieval to those active, indexed sources. An
 unconfigured engine fails with `engine_unavailable`; it cannot silently fall
-back to GraphMind. Only GraphMind is configured by the current application.
+back to GraphMind. `enabled_engines` configures GraphMind and/or bounded PDF
+`tree_navigation`; tree queries require exactly one selected ready PDF. The
+visual namespace remains unavailable.
 Selection shares the existing admission, identity, source checks and provider.
 
 The server uses MCP SDK 2.0.1, the 2026-07-28 protocol where supported, and the

@@ -31,9 +31,10 @@ scanner/build metadata remain where their tools discover them.
 | Engine catalogue facts, not readiness or dispatch | `rag/registry.py` |
 | Fixed browser-resource loading | `web/assets.py` |
 
-`rag/tree_navigation/` and `rag/multimodal/` reserve the agreed integration
-namespaces. They contain no fake engine, hidden fallback or skipped acceptance
-test: both remain unimplemented and unavailable. Only GraphMind runs today.
+`rag/tree_navigation/` implements bounded text-bearing PDF navigation through
+the pinned local PageIndex adapter. `rag/multimodal/` remains reserved and
+unavailable. Engines must be explicitly enabled; catalogue membership does not
+download models or enable a runtime adapter.
 
 ## Dependency direction and compatibility
 
@@ -96,12 +97,14 @@ building, ready, failed and invalidated states under the existing writer/attempt
 fence. Source publication and selected ready heads commit in one transaction;
 a failed replacement preserves the previous source and usable head. Tombstones
 immediately deny eligibility, before the deletion job cleans stores and invalidates
-the index records.
+the index records. Multi-engine imports stage one original and publish all
+selected ready heads with the source in that transaction. Adding a derived
+recipe can reuse an unchanged active source version and its original.
 
 The schema 3 upgrade registers metadata-verified legacy GraphMind chunk inventories
 without opening originals, vector stores or graph stores. It preserves their
 existing storage layout. GraphMind import/retry/delete jobs now use this lifecycle;
-other engine adapters remain unavailable. A derived artifact reference records a
+the tree adapter shares the same lifecycle. A derived artifact reference records a
 private manifest identity; its presence alone does not qualify a backend or prove
 that its artifact bytes have been verified.
 
@@ -127,8 +130,24 @@ executor. A recipe can attach to the same unchanged source version without
 overwriting legacy vectors or originals. Switching profiles requires explicitly
 indexing the selected profile's sources; missing indexes fail clearly. The default
 remains `legacy` pending measured quality and release acceptance. These mechanisms
-do not establish an accuracy gain, native service qualification or working tree/
-visual engines.
+do not establish an accuracy gain or native service/release qualification.
+
+## Vectorless PDF navigation
+
+Enable `tree_navigation` alone or alongside GraphMind with `enabled_engines`.
+Its local subprocess calls PageIndex Flash with both summaries and optimization
+disabled, so indexing makes no model call. The adapter preserves its hierarchy
+and original extracted page text, adds bounded page navigation, and stores the
+verified representation in the shared private artifact store. Tree-only import,
+query and deletion do not resolve an embedding model or access vector/graph stores.
+
+Queries select one ready PDF through the same reader context. The configured
+answer provider selects only supplied node IDs for at most six navigation steps,
+then the common answer pipeline receives at most three original pages with
+page-specific citations. Unknown nodes, excessive context, missing indexes and
+unsupported formats fail clearly. The adapter never falls back to vector search.
+Local Ollama calls and model workers share an installation lock; local requests
+unload Ollama weights after use. Workers cannot open outbound network connections.
 
 ## Assets and builds
 

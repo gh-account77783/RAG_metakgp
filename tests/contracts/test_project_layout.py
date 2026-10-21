@@ -51,7 +51,7 @@ class ProjectLayoutTests(unittest.TestCase):
         self.assertEqual([spec.engine_id for spec in ENGINE_CATALOG],
                          ["graphmind", "tree_navigation", "multimodal"])
         self.assertTrue(engine_spec("graphmind").implemented)
-        self.assertFalse(engine_spec("tree_navigation").implemented)
+        self.assertTrue(engine_spec("tree_navigation").implemented)
         self.assertFalse(engine_spec("multimodal").implemented)
         with self.assertRaises(FrozenInstanceError):
             engine_spec("graphmind").implemented = False

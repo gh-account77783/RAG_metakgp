@@ -33,6 +33,8 @@ answer_max_context_chars = 24000
 answer_max_output_tokens = 512
 retrieval_seed_limit = 4
 retrieval_profile = "legacy"
+enabled_engines = ["graphmind"]
+# Add "tree_navigation" for text-bearing PDFs, or select it alone for vectorless use.
 # For the qualified hybrid recipe, set retrieval_profile="hybrid" and point to
 # an explicitly retained BAAI/bge-reranker-v2-m3 artifact directory. No auto download.
 reranker_dir = ""

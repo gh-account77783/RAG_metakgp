@@ -55,6 +55,7 @@ _ENV_KEYS = {
     "GRAPHMIND_ANSWER_MAX_OUTPUT_TOKENS": "answer_max_output_tokens",
     "GRAPHMIND_RETRIEVAL_SEED_LIMIT": "retrieval_seed_limit",
     "GRAPHMIND_RETRIEVAL_PROFILE": "retrieval_profile",
+    "GRAPHMIND_ENABLED_ENGINES": "enabled_engines",
     "GRAPHMIND_RERANKER_DIR": "reranker_dir",
     "GRAPHMIND_RETRIEVAL_GRAPH_LIMIT": "retrieval_graph_limit",
     "GRAPHMIND_RETRIEVAL_GRAPH_SCOPE": "retrieval_graph_scope",
@@ -175,6 +176,7 @@ class Settings:
     answer_max_output_tokens: int = 512
     retrieval_seed_limit: int = 4
     retrieval_profile: str = "legacy"
+    enabled_engines: tuple[str, ...] = ("graphmind",)
     reranker_dir: str = ""
     retrieval_graph_limit: int = 8
     retrieval_graph_scope: str = "chunk"
@@ -328,6 +330,12 @@ class Settings:
         values["allowed_import_roots"] = _coerce_roots(values["allowed_import_roots"], base)
         if values.get("reranker_dir"):
             values["reranker_dir"] = str(_coerce_path(values["reranker_dir"], base))
+        engines = values.get("enabled_engines", ("graphmind",))
+        if isinstance(engines, str):
+            engines = [value.strip() for value in engines.split(",") if value.strip()]
+        if not isinstance(engines, (tuple, list)) or any(not isinstance(value, str) for value in engines):
+            raise ConfigurationError("enabled_engines must be a list of engine identifiers")
+        values["enabled_engines"] = tuple(sorted(set(engines)))
         for key in (
             "max_file_bytes",
             "chunk_size",
@@ -390,7 +398,9 @@ class Settings:
     ) -> None:
         if self.retrieval_profile not in {"legacy", "hybrid"}:
             raise ConfigurationError("retrieval_profile must be legacy or hybrid")
-        if self.retrieval_profile == "hybrid" and not self.reranker_dir:
+        if (not self.enabled_engines or set(self.enabled_engines) - {"graphmind", "tree_navigation", "multimodal"}):
+            raise ConfigurationError("enabled_engines contains no supported selection")
+        if self.retrieval_profile == "hybrid" and "graphmind" in self.enabled_engines and not self.reranker_dir:
             raise ConfigurationError("The hybrid profile requires a retained local reranker_dir")
         if not self.collection_id.strip() or not self.collection_name.strip():
             raise ConfigurationError("Collection identifiers cannot be empty")
@@ -582,6 +592,7 @@ class Settings:
             "collection_id": self.collection_id,
             "collection_name": self.collection_name,
             "retrieval_profile": self.retrieval_profile,
+            "enabled_engines": list(self.enabled_engines),
             "reranker_dir": self.reranker_dir,
             "max_file_bytes": self.max_file_bytes,
             "chunk_size": self.chunk_size,

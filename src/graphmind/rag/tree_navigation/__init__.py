@@ -1,1 +1,1 @@
-"""Reserved tree-navigation namespace; this engine is not implemented."""
+"""Bounded PDF tree navigation through a pinned local PageIndex adapter."""
