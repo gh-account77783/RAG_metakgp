@@ -17,6 +17,7 @@ class FileStore(Protocol):
     def put_bytes(
         self, document_id: str, version_id: str, content: bytes, suffix: str = ".bin"
     ) -> str: ...
+    def read_bytes(self, private_ref: str, *, max_bytes: int) -> bytes: ...
     def delete_document(self, document_id: str) -> None: ...
     def readiness(self) -> AdapterStatus: ...
 
@@ -50,6 +51,26 @@ class PrivateFileStore:
             return str(destination.relative_to(self.data_dir))
         except OSError as exc:
             raise DependencyUnavailableError("Private file storage is unavailable") from exc
+
+    def read_bytes(self, private_ref: str, *, max_bytes: int) -> bytes:
+        if max_bytes < 1:
+            raise ValueError("Original-file byte limit must be positive")
+        reference = Path(private_ref)
+        try:
+            if reference.is_absolute() or ".." in reference.parts:
+                raise ValueError("Original-file reference must be private and relative")
+            candidate = self.data_dir / reference
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(self.files_dir)
+            if candidate.is_symlink() or not resolved.is_file():
+                raise ValueError("Original file is unavailable")
+            with resolved.open("rb") as stream:
+                content = stream.read(max_bytes + 1)
+            if len(content) > max_bytes:
+                raise ValueError("Original file exceeds its byte limit")
+            return content
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise DependencyUnavailableError("Private original is unavailable or exceeds its limit") from exc
 
     def delete_document(self, document_id: str) -> None:
         target = (self.files_dir / document_id).resolve()

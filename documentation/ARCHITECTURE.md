@@ -76,6 +76,15 @@ passes publication checks. Identical source bytes and fingerprints remain
 idempotent. Historical versions are retained without automatic migration or
 reimport; their older content hashes may describe extracted text.
 
+`sources.py` applies the existing metadata authority's active-version policy for
+the answer pipeline and shared reader. Search results and model input must refer
+to current versions; after generation, every version supplied as context is
+checked again, including uncited passages. Original-byte snapshots use bounded
+private-file reads and verify the recorded hash before use. Build snapshots also
+require the existing durable job/writer attempt fence. A historical text-derived
+hash that cannot authenticate original bytes requires explicit host reimport for
+byte-sensitive consumers; the service never rewrites that history automatically.
+
 ## Assets and builds
 
 `assets/web/` is the single editable CSS/JS source, outside `src/`. The pinned

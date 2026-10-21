@@ -53,6 +53,10 @@ class DocumentNotFoundError(GraphMindError):
     code = "document_not_found"
 
 
+class SourceIntegrityError(GraphMindError):
+    code = "source_integrity_error"
+
+
 class DocumentBusyError(GraphMindError):
     code = "document_busy"
 

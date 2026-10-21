@@ -11,6 +11,7 @@ from ...errors import (
 )
 from ...metadata import MetadataStore
 from ...providers import AnswerProvider
+from ...sources import SourceService
 from .citations import citations_for_answer
 from .contracts import Evidence, EvidenceRetriever, Outcome, QueryResult
 
@@ -25,10 +26,12 @@ class AnswerService:
         max_concurrent_queries: int = 4,
         max_queued_queries: int = 8,
         queue_timeout: float = 1.0,
+        sources: SourceService | None = None,
     ) -> None:
         self.metadata = metadata
         self.retrieval = retrieval
         self.provider = provider
+        self.sources = sources or SourceService(metadata)
         self.queue_timeout = queue_timeout
         self.max_queued_queries = max_queued_queries
         self._capacity = threading.BoundedSemaphore(max_concurrent_queries)
@@ -74,13 +77,14 @@ class AnswerService:
             )
         if cancel_event is not None and cancel_event.is_set():
             raise QueryCancelledError("Query was cancelled")
+        self.sources.assert_current(item.version_id for item in evidence)
         answer = self.provider.answer(question, evidence)
         if cancel_event is not None and cancel_event.is_set():
             raise QueryCancelledError("Query was cancelled")
         citations = citations_for_answer(answer, evidence)
-        active_versions = self.metadata.active_version_ids()
-        if any(item.version_id not in active_versions for item in citations):
-            raise RetryableQueryError("A cited version changed while the answer was generated")
+        # All context can influence the answer, including passages not cited by
+        # the provider. Recheck the complete input snapshot before delivery.
+        self.sources.assert_current(item.version_id for item in evidence)
         provider_calls_after = int(getattr(self.provider, "call_count", provider_calls_before))
         return QueryResult(
             outcome=answer.outcome,
@@ -108,6 +112,7 @@ class AnswerService:
             evidence = self.retrieval.retrieve(question)
             if cancel_event is not None and cancel_event.is_set():
                 raise QueryCancelledError("Query was cancelled")
+            self.sources.assert_current(item.version_id for item in evidence)
             return evidence
         finally:
             self._capacity.release()

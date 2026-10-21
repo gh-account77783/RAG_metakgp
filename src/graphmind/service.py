@@ -9,6 +9,7 @@ from .files import FileStore, PrivateFileStore
 from .ingestion import IngestionService
 from .jobs import DurableJobExecutor
 from .metadata import MetadataStore
+from .sources import SourceService
 from .parsing import IsolatedExtractor
 from .providers import AnswerProvider, OllamaProvider
 from .rag.components.pipeline import AnswerService
@@ -59,6 +60,7 @@ class GraphMindApplication:
         else:
             self.embedding = build_embedding(settings)
         self.files = files or PrivateFileStore(settings.data_dir, settings.files_dir)
+        self.sources = SourceService(self.metadata, self.files, max_file_bytes=settings.max_file_bytes)
         self.extractor = extractor or IsolatedExtractor(settings)
         self.extractor.cleanup_abandoned()
         self.vector = vector or ChromaVectorStore(
@@ -115,6 +117,7 @@ class GraphMindApplication:
             max_concurrent_queries=settings.max_concurrent_queries,
             max_queued_queries=settings.max_queued_queries,
             queue_timeout=settings.query_queue_timeout_seconds,
+            sources=self.sources,
         )
 
     def readiness(self):
