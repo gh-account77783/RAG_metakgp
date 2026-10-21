@@ -85,6 +85,7 @@ class Job:
     heartbeat_at: str | None = None
     progress: int = 0
     error_code: str | None = None
+    payload_json: str = "{}"
 
 
 @dataclass(frozen=True, slots=True)

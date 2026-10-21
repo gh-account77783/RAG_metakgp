@@ -64,7 +64,9 @@ class IndexRecipe:
     @classmethod
     def deserialize(cls, value: str) -> IndexRecipe:
         decoded = json.loads(value)
-        if decoded["schema_version"] != 1:
+        if (not isinstance(decoded, dict)
+                or set(decoded) != {"schema_version", "engine_id", "revision", "configuration"}
+                or type(decoded["schema_version"]) is not int or decoded["schema_version"] != 1):
             raise ValueError("Unknown index recipe schema")
         return cls.create(decoded["engine_id"], decoded["revision"], decoded["configuration"])
 
@@ -103,3 +105,5 @@ class EngineIndex:
     created_at: str
     updated_at: str
     failure_code: str | None = None
+    artifact_ref: str | None = None
+    artifact_digest: str | None = None

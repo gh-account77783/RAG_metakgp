@@ -29,6 +29,8 @@ from .metadata import MetadataStore, utc_now
 from .parsing import ExtractionResult, IsolatedExtractor, SUPPORTED_MEDIA_TYPES
 from .rag.components.vector_store import VectorStore
 from .rag.graphmind.reference_graph import GraphStore
+from .rag.components.index_contracts import IndexInventory
+from .rag.components.indexes import IndexRepository, legacy_graphmind_recipe
 
 
 REFERENCE_PATTERN = re.compile(r"\[\[([^\[\]\r\n]{1,200})\]\]")
@@ -184,6 +186,7 @@ class IngestionService:
         files: FileStore,
         extractor: IsolatedExtractor,
         *,
+        indexes: IndexRepository | None = None,
         failure_injector: Callable[[str], None] | None = None,
     ) -> None:
         self.settings = settings
@@ -194,6 +197,7 @@ class IngestionService:
         self.embedding_fingerprint = embedding_fingerprint
         self.files = files
         self.extractor = extractor
+        self.indexes = indexes or IndexRepository(metadata)
         self.failure_injector = failure_injector
 
     @property
@@ -341,6 +345,7 @@ class IngestionService:
         document = stored_document
         self.metadata.put_version(version)
         self.metadata.replace_chunks(version_id, chunks)
+        self.indexes.prepare(version_id, legacy_graphmind_recipe(version))
         self._fail("after_metadata")
         job = self.metadata.put_job(
             Job(
@@ -403,26 +408,30 @@ class IngestionService:
         version = self.metadata.version(job.version_id)
         if document is None or version is None:
             raise PublicationError("Job metadata is incomplete")
+        index = self.indexes.prepare(version.version_id, legacy_graphmind_recipe(version))
         chunks = self.metadata.all_chunks_for_version(version.version_id)
         expected_ids = {chunk.chunk_id for chunk in chunks}
         chunk_digest = _hash("\n".join(chunk.chunk_id for chunk in chunks).encode("ascii"))
-        if (
-            len(chunks) != version.expected_chunk_count
-            or len(expected_ids) != version.expected_chunk_count
-            or chunk_digest != version.chunk_digest
-        ):
-            raise PublicationError("Staged chunk count does not match the version manifest")
-        if document.active_version_id == version.version_id and version.status is VersionStatus.READY:
-            stored_ids = (
-                expected_ids,
-                self.vector.chunk_ids_for_version(self.installation_id, version.version_id),
-                self.graph.chunk_ids_for_version(self.installation_id, version.version_id),
-            )
-            if all(item == expected_ids for item in stored_ids):
-                self._progress(job, 99)
-                return
-            raise PublicationError("The active version does not match both retrieval stores")
         try:
+            self.indexes.start(job, index.index_id)
+            if (
+                len(chunks) != version.expected_chunk_count
+                or len(expected_ids) != version.expected_chunk_count
+                or chunk_digest != version.chunk_digest
+            ):
+                raise PublicationError("Staged chunk count does not match the version manifest")
+            inventory = IndexInventory(len(chunks), chunk_digest)
+            if document.active_version_id == version.version_id and version.status is VersionStatus.READY:
+                stored_ids = (
+                    expected_ids,
+                    self.vector.chunk_ids_for_version(self.installation_id, version.version_id),
+                    self.graph.chunk_ids_for_version(self.installation_id, version.version_id),
+                )
+                if all(item == expected_ids for item in stored_ids):
+                    self.indexes.complete(job, index.index_id, inventory, activate=True)
+                    self._progress(job, 99)
+                    return
+                raise PublicationError("The active version does not match both retrieval stores")
             self.metadata.set_version_status(version.version_id, VersionStatus.INDEXING, job=job)
             self._progress(job, 10)
             self.vector.upsert_version(self.installation_id, chunks)
@@ -443,20 +452,23 @@ class IngestionService:
                 )
             self._progress(job, 90)
             self._fail("before_publish")
+            self.indexes.complete(job, index.index_id, inventory)
             self.metadata.publish_version(version.version_id, job=job)
             self._progress(job, 99)
             self._fail("after_publish")
         except Exception as exc:
             if isinstance(exc, JobLeaseError):
                 raise  # A stale attempt must not change its successor's metadata.
+            code = exc.code if isinstance(exc, GraphMindError) else "internal_error"
+            self.indexes.fail(job, index.index_id, code)
             current = self.metadata.document(job.document_id)
             if current is None or current.active_version_id != job.version_id:
-                code = exc.code if isinstance(exc, GraphMindError) else "internal_error"
                 self.metadata.set_version_status(job.version_id, VersionStatus.FAILED, code, job=job)
             raise
 
     def _process_delete(self, job: Job) -> None:
         self.metadata.assert_job_lease(job)
+        self.indexes.invalidate_document(job)
         self.vector.delete_document(self.installation_id, job.document_id)
         self._progress(job, 35)
         self._fail("after_delete_vector")
@@ -472,6 +484,14 @@ class IngestionService:
     def process_job(self, job: Job) -> None:
         self.metadata.assert_job_lease(job)
         if job.operation in {"import_txt", "import_document"}:
+            self._process_import(job)
+            return
+        if job.operation == "build_index":
+            version = self.metadata.version(job.version_id)
+            targets = self.indexes._targets(job)
+            if version is None or targets != [legacy_graphmind_recipe(version).index_id(
+                    self.installation_id, job.version_id)]:
+                raise PublicationError("This index backend is not implemented")
             self._process_import(job)
             return
         if job.operation == "delete_document":

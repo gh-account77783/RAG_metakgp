@@ -24,6 +24,7 @@ scanner/build metadata remain where their tools discover them.
 | Source staging, parsing, durable jobs and publication | `ingestion.py`, `parsing.py`, `parser_worker.py`, `files.py`, `metadata.py`, `jobs.py` |
 | Answer-provider transport | `providers.py`, `http_client.py` |
 | Shared records and retrieval protocol | `rag/components/contracts.py` |
+| Derived-index recipes, inventories and publication heads | `rag/components/index_contracts.py`, `indexes.py` |
 | Shared admission, answer orchestration and citation membership | `rag/components/pipeline.py`, `citations.py` |
 | Shared embedding and vector-store implementations | `rag/components/embeddings.py`, `vector_store.py` |
 | Current vector/reference retrieval and reference-graph adapters | `rag/graphmind/engine.py`, `reference_graph.py` |
@@ -84,6 +85,25 @@ private-file reads and verify the recorded hash before use. Build snapshots also
 require the existing durable job/writer attempt fence. A historical text-derived
 hash that cannot authenticate original bytes requires explicit host reimport for
 byte-sensitive consumers; the service never rewrites that history automatically.
+
+## Derived-index lifecycle
+
+SQLite schema 3 adds per-engine indexes and current index heads to the existing
+metadata database, plus bounded immutable JSON input on the existing durable jobs.
+Recipes identify index-affecting settings; changing a recipe creates another
+derived index attached to the same source version. Indexes move through staged,
+building, ready, failed and invalidated states under the existing writer/attempt
+fence. Source publication and selected ready heads commit in one transaction;
+a failed replacement preserves the previous source and usable head. Tombstones
+immediately deny eligibility, before the deletion job cleans stores and invalidates
+the index records.
+
+The schema upgrade registers metadata-verified legacy GraphMind chunk inventories
+without opening originals, vector stores or graph stores. It preserves their
+existing storage layout. GraphMind import/retry/delete jobs now use this lifecycle;
+other engine adapters remain unavailable. A derived artifact reference records a
+private manifest identity; its presence alone does not qualify a backend or prove
+that its artifact bytes have been verified.
 
 ## Assets and builds
 

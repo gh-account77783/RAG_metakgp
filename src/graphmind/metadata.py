@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 import uuid
 from contextlib import contextmanager
 from dataclasses import replace
@@ -16,6 +17,7 @@ from .errors import (
     DocumentNotFoundError,
     JobQueueFullError,
     JobLeaseError,
+    JobInputError,
     ManifestUnavailableError,
     MigrationBusyError,
     MigrationError,
@@ -24,7 +26,7 @@ from .errors import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 def utc_now() -> str:
@@ -113,6 +115,47 @@ VALUES (1, NULL, NULL);
 
 _MIGRATION_2 = "ALTER TABLE versions ADD COLUMN source_size INTEGER NOT NULL DEFAULT 0;"
 
+_MIGRATION_3 = """
+ALTER TABLE jobs ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}';
+CREATE TABLE engine_indexes (
+    index_id TEXT PRIMARY KEY,
+    source_version_id TEXT NOT NULL REFERENCES versions(version_id),
+    engine_id TEXT NOT NULL,
+    recipe_fingerprint TEXT NOT NULL,
+    recipe_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('staged', 'building', 'ready', 'failed', 'invalidated')),
+    unit_count INTEGER CHECK (unit_count IS NULL OR unit_count >= 0),
+    unit_digest TEXT,
+    artifact_ref TEXT,
+    artifact_digest TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    failure_code TEXT,
+    UNIQUE(source_version_id, engine_id, recipe_fingerprint),
+    CHECK(status != 'ready' OR (unit_count IS NOT NULL AND unit_digest IS NOT NULL)),
+    CHECK((artifact_ref IS NULL) = (artifact_digest IS NULL))
+);
+CREATE INDEX idx_engine_indexes_source ON engine_indexes(source_version_id, engine_id);
+CREATE TABLE engine_index_heads (
+    document_id TEXT NOT NULL REFERENCES documents(document_id),
+    engine_id TEXT NOT NULL,
+    index_id TEXT NOT NULL REFERENCES engine_indexes(index_id),
+    PRIMARY KEY(document_id, engine_id)
+);
+"""
+
+
+def _job_input(job: Job) -> str:
+    try:
+        if not isinstance(job.payload_json, str) or len(job.payload_json.encode("utf-8")) > 64 * 1024:
+            raise ValueError("Job input exceeds its limit")
+        value = json.loads(job.payload_json)
+        if not isinstance(value, dict):
+            raise ValueError("Job input must be an object")
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (ValueError, TypeError) as exc:
+        raise JobInputError("Job input must be a bounded JSON object") from exc
+
 
 def _execute_script(connection: sqlite3.Connection, script: str) -> None:
     for statement in script.split(";"):
@@ -175,6 +218,12 @@ class MetadataStore:
                 if current < 2:
                     connection.execute(_MIGRATION_2)
                     connection.execute("PRAGMA user_version = 2")
+                    current = 2
+                if current < 3:
+                    _execute_script(connection, _MIGRATION_3)
+                    from .rag.components.indexes import IndexRepository
+                    IndexRepository(self).backfill_legacy(connection)
+                    connection.execute("PRAGMA user_version = 3")
                 connection.commit()
         except sqlite3.OperationalError as exc:
             if "locked" in str(exc).lower() or "busy" in str(exc).lower():
@@ -189,17 +238,21 @@ class MetadataStore:
 
     def installation_id(self) -> str:
         with self.transaction() as connection:
-            row = connection.execute(
-                "SELECT installation_id FROM installation_state WHERE singleton = 1"
-            ).fetchone()
-            if row:
-                return str(row["installation_id"])
-            value = str(uuid.uuid4())
-            connection.execute(
-                "INSERT INTO installation_state(singleton, installation_id, created_at) VALUES (1, ?, ?)",
-                (value, utc_now()),
-            )
-            return value
+            return self._installation_id(connection)
+
+    @staticmethod
+    def _installation_id(connection: sqlite3.Connection) -> str:
+        row = connection.execute(
+            "SELECT installation_id FROM installation_state WHERE singleton = 1"
+        ).fetchone()
+        if row:
+            return str(row["installation_id"])
+        value = str(uuid.uuid4())
+        connection.execute(
+            "INSERT INTO installation_state(singleton, installation_id, created_at) VALUES (1, ?, ?)",
+            (value, utc_now()),
+        )
+        return value
 
     def put_document(self, document: Document, *, allow_restore: bool = False) -> Document:
         with self.transaction() as connection:
@@ -391,6 +444,8 @@ class MetadataStore:
                 "UPDATE documents SET active_version_id = ?, deleted_at = NULL WHERE document_id = ?",
                 (version_id, row["document_id"]),
             )
+            from .rag.components.indexes import IndexRepository
+            IndexRepository(self).publish_source_heads(connection, job)
 
     def active_version_ids(self) -> set[str]:
         try:
@@ -483,10 +538,12 @@ class MetadataStore:
             """
             SELECT 1 FROM jobs j JOIN writer_lock w ON w.singleton = 1
             WHERE j.job_id = ? AND j.status = 'running' AND j.lease_owner = ?
-              AND j.attempt_count = ? AND j.lease_expires_at > ?
+              AND j.attempt_count = ? AND j.document_id = ? AND j.version_id = ?
+              AND j.operation = ? AND j.payload_json = ? AND j.lease_expires_at > ?
               AND w.owner = j.lease_owner AND w.lease_expires_at > ?
             """,
-            (job.job_id, job.lease_owner, job.attempt_count, now, now),
+            (job.job_id, job.lease_owner, job.attempt_count, job.document_id, job.version_id,
+             job.operation, job.payload_json, now, now),
         ).fetchone()
         if row is None:
             raise JobLeaseError("Ingestion writer ownership or job attempt was lost")
@@ -497,11 +554,16 @@ class MetadataStore:
 
     def put_job(self, job: Job, *, max_queued_jobs: int | None = None) -> Job:
         now = utc_now()
+        payload = _job_input(job)
         with self.transaction() as connection:
             existing = connection.execute(
                 "SELECT * FROM jobs WHERE idempotency_key = ?", (job.idempotency_key,)
             ).fetchone()
             if existing is not None:
+                operation = lambda value: "import_document" if value == "import_txt" else value
+                if ((operation(existing["operation"]), existing["document_id"], existing["version_id"], existing["payload_json"])
+                        != (operation(job.operation), job.document_id, job.version_id, payload)):
+                    raise JobInputError("Job idempotency key has different immutable input")
                 return self._job(existing)
             if max_queued_jobs is not None:
                 queued = int(
@@ -518,8 +580,8 @@ class MetadataStore:
                 INSERT INTO jobs(
                     job_id, idempotency_key, operation, document_id, version_id, status,
                     attempt_count, available_at, lease_owner, lease_expires_at, heartbeat_at,
-                    progress, error_code, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    progress, error_code, created_at, updated_at, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job.job_id,
@@ -537,6 +599,7 @@ class MetadataStore:
                     job.error_code,
                     now,
                     now,
+                    payload,
                 ),
             )
             row = connection.execute(
@@ -553,6 +616,10 @@ class MetadataStore:
         max_queued_jobs: int,
     ) -> tuple[Document, Job]:
         now = utc_now()
+        payload = _job_input(job)
+        if (job.operation != "delete_document" or job.document_id != document_id
+                or job.version_id != (expected_active_version_id or "none")):
+            raise JobInputError("Deletion job does not match its source target")
         with self.transaction() as connection:
             document_row = connection.execute(
                 "SELECT * FROM documents WHERE document_id = ?", (document_id,)
@@ -592,7 +659,7 @@ class MetadataStore:
                 UPDATE jobs SET status = 'failed', error_code = 'superseded_by_delete',
                     lease_owner = NULL, lease_expires_at = NULL, heartbeat_at = NULL,
                     updated_at = ?
-                WHERE document_id = ? AND operation IN ('import_txt', 'import_document')
+                WHERE document_id = ? AND operation IN ('import_txt', 'import_document', 'build_index')
                   AND status = 'queued'
                 """,
                 (now, document_id),
@@ -615,8 +682,8 @@ class MetadataStore:
                 INSERT INTO jobs(
                     job_id, idempotency_key, operation, document_id, version_id, status,
                     attempt_count, available_at, lease_owner, lease_expires_at, heartbeat_at,
-                    progress, error_code, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    progress, error_code, created_at, updated_at, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job.job_id,
@@ -634,6 +701,7 @@ class MetadataStore:
                     job.error_code,
                     now,
                     now,
+                    payload,
                 ),
             )
             updated_document = connection.execute(
@@ -877,4 +945,5 @@ class MetadataStore:
             heartbeat_at=row["heartbeat_at"],
             progress=int(row["progress"]),
             error_code=row["error_code"],
+            payload_json=str(row["payload_json"]),
         )

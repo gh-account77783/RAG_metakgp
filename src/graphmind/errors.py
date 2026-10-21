@@ -77,6 +77,10 @@ class JobLeaseError(GraphMindError):
     code = "job_lease_error"
 
 
+class JobInputError(GraphMindError):
+    code = "invalid_job_input"
+
+
 class JobQueueFullError(GraphMindError):
     code = "job_queue_full"
 

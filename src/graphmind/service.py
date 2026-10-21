@@ -10,6 +10,7 @@ from .ingestion import IngestionService
 from .jobs import DurableJobExecutor
 from .metadata import MetadataStore
 from .sources import SourceService
+from .rag.components.indexes import IndexRepository
 from .parsing import IsolatedExtractor
 from .providers import AnswerProvider, OllamaProvider
 from .rag.components.pipeline import AnswerService
@@ -61,6 +62,7 @@ class GraphMindApplication:
             self.embedding = build_embedding(settings)
         self.files = files or PrivateFileStore(settings.data_dir, settings.files_dir)
         self.sources = SourceService(self.metadata, self.files, max_file_bytes=settings.max_file_bytes)
+        self.indexes = IndexRepository(self.metadata, self.sources)
         self.extractor = extractor or IsolatedExtractor(settings)
         self.extractor.cleanup_abandoned()
         self.vector = vector or ChromaVectorStore(
@@ -81,6 +83,7 @@ class GraphMindApplication:
             self.embedding.fingerprint,
             self.files,
             self.extractor,
+            indexes=self.indexes,
             failure_injector=failure_injector,
         )
         self.jobs = DurableJobExecutor(
