@@ -77,6 +77,18 @@ class JobQueueFullError(GraphMindError):
     code = "job_queue_full"
 
 
+class JobNotFoundError(GraphMindError):
+    code = "job_not_found"
+
+
+class JobNotReadyError(GraphMindError):
+    code = "job_not_ready"
+
+
+class JobExecutionError(GraphMindError):
+    code = "job_execution_error"
+
+
 class DependencyUnavailableError(GraphMindError):
     code = "dependency_unavailable"
 

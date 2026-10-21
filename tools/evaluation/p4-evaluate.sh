@@ -90,7 +90,7 @@ REPO_ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null) || \
 [[ -d "$REPO_ROOT/src/graphmind" ]] || fail "GraphMind source checkout is missing."
 cd "$REPO_ROOT"
 
-[[ -f src/graphmind/evaluation.py && -f tests/test_graphmind_p4.py ]] || \
+[[ -f src/graphmind/evaluation.py && -f tests/engines/graphmind/test_models_evaluation.py ]] || \
     fail "This checkout does not contain P4. Commit and pull the P4 candidate first."
 [[ -f tests/fixtures/evaluation/metakgp_50.json ]] || fail "Frozen fixture is missing."
 [[ -f legacy/Crawler/cleaned_wiki.jsonl ]] || fail "Frozen MetaKGP source snapshot is missing."
@@ -253,7 +253,7 @@ GRAPHMIND="$VENV/bin/graphmind"
 CURRENT_STEP="running offline regression tests"
 cd "$CANDIDATE_ROOT"
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH= \
-    "$PYTHON" -B -m unittest discover -s tests -v
+    "$PYTHON" -B -m unittest discover -s tests -t . -v
 
 if ((HOSTED_ONLY == 0)); then
     CURRENT_STEP="running real local model contract"

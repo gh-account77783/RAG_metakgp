@@ -56,6 +56,16 @@ need not be forced into the current vector representation. Future upstream code
 normally stays in pinned packages, accessed through small adapters; a vendored
 component/fork needs explicit provenance, notices and maintenance ownership.
 
+Immediate host import/reindex/delete and evaluation imports select their submitted
+job through the existing durable executor. Targeted execution shares the kernel
+lock, lease/attempt fencing, heartbeat and publication handler with FIFO workers;
+it does not drain unrelated jobs or add a second ingestion authority. Completed
+jobs are idempotent, interrupted attempts reconcile under the lock, and pending
+or failed submissions cannot be labelled successful completion.
+Targeted claims also preserve ordering within a document: an earlier pending
+version blocks the later submission with `job_not_ready`, rather than allowing
+a subsequent worker to roll the document back to the older queued version.
+
 ## Assets and builds
 
 `assets/web/` is the single editable CSS/JS source, outside `src/`. The pinned

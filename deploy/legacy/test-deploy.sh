@@ -75,7 +75,7 @@ REPO_ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null) || \
 [[ -d "$REPO_ROOT/src/graphmind" ]] || fail "GraphMind source checkout is missing."
 cd "$REPO_ROOT"
 
-[[ -f src/graphmind/parsing.py && -f tests/test_graphmind_p3.py ]] || \
+[[ -f src/graphmind/parsing.py && -f tests/unit/test_ingestion_lifecycle.py ]] || \
     fail "This checkout does not contain the P3 parser and tests. Commit and pull P3 first."
 
 GIT_HASH=$(git rev-parse HEAD)
@@ -234,7 +234,7 @@ BUILD_PYTHON="$BUILD_VENV/bin/python"
 CURRENT_STEP="running source candidate offline tests"
 cd "$CANDIDATE_ROOT"
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH= \
-    "$BUILD_PYTHON" -B -m unittest discover -s tests -v
+    "$BUILD_PYTHON" -B -m unittest discover -s tests -t . -v
 
 CURRENT_STEP="building wheel and source archive"
 "$BUILD_PYTHON" -m build --outdir "$ARTIFACT_DIR"
@@ -282,7 +282,7 @@ WHEEL_GRAPHMIND="$WHEEL_VENV/bin/graphmind"
 "$WHEEL_PYTHON" -m pip check
 "$WHEEL_GRAPHMIND" --help >/dev/null
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH= \
-    "$WHEEL_PYTHON" -B -m unittest discover -s tests -v
+    "$WHEEL_PYTHON" -B -m unittest discover -s tests -t . -v
 
 CURRENT_STEP="running real five-format Chroma and Neo4j integration"
 GRAPHMIND_RUN_INTEGRATION=1 \

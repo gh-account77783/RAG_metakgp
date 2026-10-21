@@ -10,8 +10,8 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from .config import Settings
-from .rag.components.contracts import Outcome
-from .errors import GraphMindError
+from .rag.components.contracts import Job, Outcome
+from .errors import GraphMindError, JobNotFoundError
 from .evaluation import EvaluationRunner, FrozenEvaluationDataset
 from .providers import ExtractiveProvider
 from .service import GraphMindApplication, build_embedding
@@ -135,6 +135,19 @@ def _settings(args: argparse.Namespace) -> Settings:
     )
 
 
+def _job_status(job: Job) -> dict[str, object]:
+    return {
+        "job_id": job.job_id,
+        "operation": job.operation,
+        "document_id": job.document_id,
+        "version_id": job.version_id,
+        "status": job.status.value,
+        "attempt_count": job.attempt_count,
+        "progress": job.progress,
+        "error_code": job.error_code,
+    }
+
+
 def _status(app: GraphMindApplication) -> dict[str, object]:
     return {
         "schema_version": app.metadata.schema_version(),
@@ -148,19 +161,33 @@ def _status(app: GraphMindApplication) -> dict[str, object]:
             }
             for item in app.metadata.list_documents()
         ],
-        "jobs": [
-            {
-                "job_id": item.job_id,
-                "operation": item.operation,
-                "version_id": item.version_id,
-                "status": item.status.value,
-                "attempt_count": item.attempt_count,
-                "progress": item.progress,
-                "error_code": item.error_code,
-            }
-            for item in app.metadata.list_jobs()
-        ],
+        "jobs": [_job_status(item) for item in app.metadata.list_jobs()],
     }
+
+
+def _report_submission(
+    app: GraphMindApplication,
+    job: Job,
+    *,
+    enqueue_only: bool,
+    warnings: tuple[str, ...] | None = None,
+) -> None:
+    failure = None
+    if not enqueue_only:
+        try:
+            app.jobs.run_job(job.job_id)
+        except GraphMindError as exc:
+            failure = exc
+    current = app.metadata.job(job.job_id)
+    if current is None:
+        raise JobNotFoundError("The submitted job does not exist")
+    output = _status(app)
+    output["submitted_job"] = _job_status(current)
+    if warnings is not None:
+        output["warnings"] = list(warnings)
+    print(json.dumps(output, indent=2))
+    if failure is not None:
+        raise failure
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -253,21 +280,14 @@ def main(argv: list[str] | None = None) -> None:
                     raise SystemExit(2)
             elif args.command in {"import", "reindex"}:
                 submission = app.ingestion.prepare_import(args.path)
-                if not args.enqueue_only and submission.job.status.value != "succeeded":
-                    if submission.job.status.value == "failed":
-                        app.metadata.retry_job(submission.job.job_id)
-                    app.jobs.run_once()
-                output = _status(app)
-                output["warnings"] = list(submission.warnings)
-                print(json.dumps(output, indent=2))
+                _report_submission(app, submission.job, enqueue_only=args.enqueue_only,
+                                   warnings=submission.warnings)
             elif args.command == "delete":
                 submission = app.ingestion.prepare_delete(args.document_id)
-                if not args.enqueue_only and submission.job.status.value != "succeeded":
-                    if submission.job.status.value == "failed":
-                        app.metadata.retry_job(submission.job.job_id)
-                    app.jobs.run_once()
-                print(json.dumps(_status(app), indent=2))
+                _report_submission(app, submission.job, enqueue_only=args.enqueue_only)
             elif args.command == "retry":
+                if app.metadata.job(args.job_id) is None:
+                    raise JobNotFoundError("The requested job does not exist")
                 app.metadata.retry_job(args.job_id)
                 job = app.metadata.job(args.job_id)
                 print(
@@ -309,13 +329,7 @@ def main(argv: list[str] | None = None) -> None:
                 if not args.skip_import:
                     for path in materialized.document_paths:
                         submission = app.ingestion.prepare_import(path)
-                        if submission.job.status.value == "failed":
-                            app.metadata.retry_job(submission.job.job_id)
-                        if submission.job.status.value != "succeeded":
-                            app.jobs.run_once()
-                        completed = app.metadata.job(submission.job.job_id)
-                        if completed is None or completed.status.value != "succeeded":
-                            raise GraphMindError(f"Evaluation import failed for {path.name}")
+                        app.jobs.run_job(submission.job.job_id)
                 if args.vector_only:
                     app.retrieval.graph_limit = 0
                 if args.graph_scope:

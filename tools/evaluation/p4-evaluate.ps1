@@ -162,7 +162,7 @@ try {
 
     Push-Location $CandidateRoot
     try {
-        & $Python -B -m unittest discover -s tests -v
+        & $Python -B -m unittest discover -s tests -t . -v
         if ($LASTEXITCODE -ne 0) { Fail "Offline regression tests failed." }
         if (-not $HostedOnly) {
             Invoke-WithEnvironment @{

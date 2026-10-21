@@ -726,17 +726,27 @@ class MetadataStore:
             )
             return writer.rowcount == 1 and job.rowcount == 1
 
-    def claim_next_job(self, owner: str, lease_seconds: int) -> Job | None:
+    def claim_next_job(
+        self, owner: str, lease_seconds: int, *, job_id: str | None = None
+    ) -> Job | None:
         now = utc_now()
         expires = utc_after(lease_seconds)
         with self.transaction() as connection:
             row = connection.execute(
                 """
-                SELECT * FROM jobs
-                WHERE status = 'queued' AND available_at <= ?
-                ORDER BY created_at, job_id LIMIT 1
+                SELECT candidate.* FROM jobs AS candidate
+                WHERE candidate.status = 'queued' AND candidate.available_at <= ?
+                  AND (? IS NULL OR candidate.job_id = ?)
+                  AND (? IS NULL OR NOT EXISTS (
+                      SELECT 1 FROM jobs AS predecessor
+                      WHERE predecessor.document_id = candidate.document_id
+                        AND predecessor.status IN ('queued', 'running')
+                        AND (predecessor.created_at, predecessor.job_id)
+                            < (candidate.created_at, candidate.job_id)
+                  ))
+                ORDER BY candidate.created_at, candidate.job_id LIMIT 1
                 """,
-                (now,),
+                (now, job_id, job_id, job_id),
             ).fetchone()
             if row is None:
                 return None

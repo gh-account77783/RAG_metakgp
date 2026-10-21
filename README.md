@@ -7,9 +7,10 @@ GraphMind is a self-hosted document RAG service backed by Chroma and a Neo4j doc
 As of 2026-10-21, the agreed P5/P6 functional end-to-end checkpoint and bounded
 native identity-component feasibility on Windows 11 and Windows Server 2025
 are complete. Recorded tests cover two readers, local/hosted modes, browser,
-Claude Code and an independent MCP SDK client. Commit `587140a` passed
-[Windows/Ubuntu offline and outside-checkout package CI](https://github.com/gh-account77783/RAG_metakgp/actions/runs/39461334545)
-plus secret scanning; the local source suite passed 139 tests with no skips.
+Claude Code and an independent MCP SDK client. The later structural refactor
+`7216c21` passed [Windows/Ubuntu offline and outside-checkout package CI](https://github.com/gh-account77783/RAG_metakgp/actions/runs/39586921046)
+plus secret scanning; its source and installed-wheel suites passed 149 tests
+with no skips. That refactor added no new live-model or native-service acceptance.
 Optional real-stores CI was skipped on push, not counted as acceptance.
 
 These are bounded development results, not production/release qualification.
@@ -41,6 +42,21 @@ graphmind --config config/graphmind.example.toml delete <document-id>
 Text extraction runs in a time-limited subprocess. PDF OCR and password-protected files are rejected explicitly; DOCX macros, embedded objects, and external relationships are never processed; Markdown HTML and CSV formulas remain inert text. Import roots, source size, extracted text, archive expansion, archive entries, PDF pages, parser time, queue size, and chunk size are configurable host limits.
 
 Deletion removes a document from the active manifest before its durable cleanup job touches Chroma, Neo4j, or private originals. A failed cleanup remains retryable with `graphmind retry <job-id>`. Reindexing creates a new immutable version when parser, chunker, embedding configuration, or document content changes, and the previous version remains active until both retrieval stores verify the replacement.
+
+Immediate `import`, `reindex` and `delete` commands execute their own submitted
+job through the shared durable executor. They leave unrelated queued jobs for
+the worker and return success only after their job succeeds. JSON output keeps
+the installation status and adds `submitted_job` with its ID, state, progress
+and error code. A failure or busy writer returns a nonzero exit status; the
+recorded job remains available for inspection/retry. `--enqueue-only` reports
+the actual state without running work. `graphmind retry <job-id>` queues a failed
+job; `graphmind worker-once` processes at most one eligible queued job in FIFO
+order. Unknown job IDs are errors. Evaluation imports reuse the same targeted
+executor.
+
+A targeted job cannot overtake an older queued/running job for the same
+document. It returns `job_not_ready` until that earlier work is completed, so a
+later worker cannot republish an older pending version after the replacement.
 
 The deterministic hash embedding remains an offline diagnostic adapter only. The production candidate uses `BAAI/bge-m3` through same-host Ollama and fingerprints its full digest, reported precision and 1024-dimensional output. Changing that identity requires explicit reindexing. Bounded real identity/client functionality is verified; full quality, installers and release qualification remain later gates.
 
@@ -91,7 +107,7 @@ later browser/OAuth/MCP phases.
 
 ## Ubuntu 24.04 EC2 validation
 
-`deploy/legacy/test-deploy.sh` is the P1-P3 test harness for a clean Ubuntu Server 24.04 EC2 checkout. It installs test prerequisites, starts pinned Neo4j on localhost, builds and inspects the package, tests the installed wheel, runs the real five-format Chroma/Neo4j procedure, and exercises the CLI lifecycle with isolated generated data.
+`deploy/legacy/test-deploy.sh` retains the historical P1-P3 test harness for a clean Ubuntu Server 24.04 EC2 checkout. Its relocation guards now reference the categorized tests. It installs test prerequisites, starts pinned Neo4j on localhost, builds and inspects the package, tests the installed wheel, runs the real five-format Chroma/Neo4j procedure, and exercises the CLI lifecycle with isolated generated data. It is a manually invoked development harness, not the P7 installer; static path/syntax checks do not requalify its remote procedure. Use an explicitly approved disposable host and private test configuration before invoking it or the P4 model-evaluation wrappers.
 
 Run it as the normal SSH user from a clean checkout of the exact candidate commit:
 
