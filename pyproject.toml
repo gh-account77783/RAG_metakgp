@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "graphmind-rag-mcp"
 version = "0.1.0"
 description = "Self-hosted document RAG foundation with vector and document-graph retrieval"
-readme = { file = "README", content-type = "text/markdown" }
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "chromadb==1.5.9",
@@ -25,15 +25,21 @@ test = ["build==1.6.0"]
 graphmind = "graphmind.cli:main"
 
 [tool.setuptools]
-package-dir = { "" = "src" }
+# The tools mapping lets setuptools resolve the build-only command outside src.
+# Package discovery below still includes only graphmind*, never tools.
+package-dir = { "" = "src", "tools" = "tools" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["graphmind*"]
 
+[tool.setuptools.cmdclass]
+build_py = "tools.build_assets.BuildPy"
+
 [tool.setuptools.data-files]
-"share/graphmind" = ["AUTH_AND_MCP.md", "DEPENDENCIES.md", "graphmind.example.toml", ".env.example"]
-"share/graphmind/constraints" = ["constraints/core-py313.txt", "constraints/linux-py313.txt"]
+"share/graphmind/documentation" = ["documentation/AUTH_AND_MCP.md", "documentation/DEPENDENCIES.md", "documentation/ARCHITECTURE.md"]
+"share/graphmind/config" = ["config/graphmind.example.toml", "config/.env.example"]
+"share/graphmind/config/constraints" = ["config/constraints/core-py313.txt", "config/constraints/linux-py313.txt"]
 "share/graphmind/deploy/keycloak" = ["deploy/keycloak/README.md", "deploy/keycloak/graphmind-realm.template.json", "deploy/keycloak/graphmind-user-profile.json", "deploy/keycloak/graphmind-recovery.json", "deploy/keycloak/nginx-recovery.conf.example"]
 "share/graphmind/deploy/keycloak/recovery-src/org/graphmind/keycloak" = ["deploy/keycloak/recovery-src/org/graphmind/keycloak/ExistingPasswordResetFactory.java", "deploy/keycloak/recovery-src/org/graphmind/keycloak/PasswordRevocationFactory.java"]
 "share/graphmind/deploy/keycloak/recovery-src/META-INF/services" = ["deploy/keycloak/recovery-src/META-INF/services/org.keycloak.authentication.AuthenticatorFactory", "deploy/keycloak/recovery-src/META-INF/services/org.keycloak.events.EventListenerProviderFactory"]

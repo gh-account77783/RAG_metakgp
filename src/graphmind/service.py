@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from .config import Settings
-from .domain import AdapterStatus
-from .embeddings import EmbeddingProvider, HashEmbedding, OllamaEmbedding
+from .rag.components.contracts import AdapterStatus
+from .rag.components.embeddings import EmbeddingProvider, HashEmbedding, OllamaEmbedding
 from .files import FileStore, PrivateFileStore
 from .ingestion import IngestionService
 from .jobs import DurableJobExecutor
 from .metadata import MetadataStore
 from .parsing import IsolatedExtractor
 from .providers import AnswerProvider, OllamaProvider
-from .retrieval import AnswerService, RetrievalService
-from .storage import ChromaVectorStore, GraphStore, Neo4jGraphStore, VectorStore
+from .rag.components.pipeline import AnswerService
+from .rag.graphmind.engine import RetrievalService
+from .rag.components.vector_store import ChromaVectorStore, VectorStore
+from .rag.graphmind.reference_graph import GraphStore, Neo4jGraphStore
 
 
 def build_embedding(settings: Settings) -> EmbeddingProvider:

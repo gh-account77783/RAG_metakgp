@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Protocol
 
-from .domain import AdapterStatus
+from .rag.components.contracts import AdapterStatus
 from .errors import DependencyUnavailableError
 
 

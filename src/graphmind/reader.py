@@ -7,7 +7,7 @@ from contextlib import closing
 from typing import Any
 
 from .errors import DocumentNotFoundError, ReaderQueryError, RetryableQueryError
-from .domain import Outcome
+from .rag.components.contracts import Outcome
 
 
 class ReaderService:

@@ -1,7 +1,8 @@
 prune tests
-include AUTH_AND_MCP.md DEPENDENCIES.md graphmind.example.toml .env.example
-include constraints/core-py313.txt
-include constraints/linux-py313.txt
+include documentation/AUTH_AND_MCP.md documentation/DEPENDENCIES.md config/graphmind.example.toml config/.env.example
+include documentation/ARCHITECTURE.md
+include config/constraints/core-py313.txt
+include config/constraints/linux-py313.txt
 recursive-include deploy/keycloak *.md *.json
 include deploy/keycloak/nginx-recovery.conf.example
 recursive-include deploy/keycloak/themes *.properties
@@ -10,4 +11,6 @@ include deploy/keycloak/recovery-src/META-INF/services/org.keycloak.authenticati
 include deploy/keycloak/recovery-src/META-INF/services/org.keycloak.events.EventListenerProviderFactory
 include deploy/acceptance/README.md
 include tools/run_real_acceptance.py tools/mcp_acceptance.py tools/build_keycloak_recovery.py
+include tools/build_assets.py
+include assets/web/graphmind.css assets/web/graphmind.js
 recursive-exclude * __pycache__ *.py[cod]

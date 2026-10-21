@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from .domain import Evidence, Outcome
+from .rag.components.contracts import Evidence, Outcome
 from .errors import EvaluationError
-from .retrieval import AnswerService
+from .rag.components.pipeline import AnswerService
 
 
 def _normalized_source_bytes(raw: bytes) -> bytes:

@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
-from .domain import AdapterStatus, Evidence, Outcome, ProviderAnswer
+from .rag.components.contracts import AdapterStatus, Evidence, Outcome, ProviderAnswer
 from .errors import (
     ModelNotFoundError,
     ProviderAuthenticationError,

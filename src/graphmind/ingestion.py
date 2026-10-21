@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config import Settings
-from .domain import Chunk, Document, Job, JobStatus, Version, VersionStatus
+from .rag.components.contracts import Chunk, Document, Job, JobStatus, Version, VersionStatus
 from .errors import (
     DocumentBusyError,
     DocumentNotFoundError,
@@ -27,7 +27,8 @@ from .errors import (
 from .files import FileStore
 from .metadata import MetadataStore, utc_now
 from .parsing import ExtractionResult, IsolatedExtractor, SUPPORTED_MEDIA_TYPES
-from .storage import GraphStore, VectorStore
+from .rag.components.vector_store import VectorStore
+from .rag.graphmind.reference_graph import GraphStore
 
 
 REFERENCE_PATTERN = re.compile(r"\[\[([^\[\]\r\n]{1,200})\]\]")

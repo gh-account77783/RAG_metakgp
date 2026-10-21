@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Iterator, Sequence
 
-from .domain import Chunk, Document, Job, JobStatus, Version, VersionStatus
+from .rag.components.contracts import Chunk, Document, Job, JobStatus, Version, VersionStatus
 from .errors import (
     DocumentBusyError,
     DocumentNotFoundError,

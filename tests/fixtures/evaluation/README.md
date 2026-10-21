@@ -1,7 +1,7 @@
 # MetaKGP 50-case evaluation fixture
 
 `metakgp_50.json` is the frozen P4 evaluation contract. It was curated from the
-checked-in `Crawler/cleaned_wiki.jsonl` development snapshot rather than generated
+checked-in `legacy/Crawler/cleaned_wiki.jsonl` development snapshot rather than generated
 at evaluation time.
 
 The 50 cases are intentionally balanced:

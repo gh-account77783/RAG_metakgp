@@ -8,7 +8,7 @@ import threading
 import uuid
 from collections.abc import Callable
 
-from .domain import Job
+from .rag.components.contracts import Job
 from .errors import GraphMindError, JobLeaseError
 from .locking import exclusive_file_lock
 from .metadata import MetadataStore

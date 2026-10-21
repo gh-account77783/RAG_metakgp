@@ -57,7 +57,7 @@ compare SHA-256 at both ends. Preserve the original checkout and stores.
 From a checkout containing tests, in an isolated constrained test venv:
 
 ```sh
-python -m pip install --constraint constraints/core-py313.txt --constraint constraints/linux-py313.txt '.[test]' setuptools==80.9.0 wheel==0.45.1
+python -m pip install --constraint config/constraints/core-py313.txt --constraint config/constraints/linux-py313.txt '.[test]' setuptools==80.9.0 wheel==0.45.1
 python -m pip check
 python -B -m unittest discover -s tests -v
 python tools/verify_package.py --output /private/run/artifacts

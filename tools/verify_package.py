@@ -22,8 +22,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_FILES = (
-    "pyproject.toml", "MANIFEST.in", "README", "AUTH_AND_MCP.md", "DEPENDENCIES.md",
-    "graphmind.example.toml", ".env.example", "constraints/core-py313.txt", "constraints/linux-py313.txt",
+    "pyproject.toml", "MANIFEST.in", "README.md", "documentation/AUTH_AND_MCP.md", "documentation/DEPENDENCIES.md", "documentation/ARCHITECTURE.md",
+    "config/graphmind.example.toml", "config/.env.example", "config/constraints/core-py313.txt", "config/constraints/linux-py313.txt",
     "deploy/keycloak/README.md", "deploy/keycloak/graphmind-realm.template.json",
     "deploy/keycloak/graphmind-user-profile.json", "deploy/acceptance/README.md",
     "tools/run_real_acceptance.py", "tools/mcp_acceptance.py",
@@ -35,6 +35,11 @@ BUILD_FILES = (
     "deploy/keycloak/recovery-src/org/graphmind/keycloak/PasswordRevocationFactory.java",
     "deploy/keycloak/recovery-src/META-INF/services/org.keycloak.authentication.AuthenticatorFactory",
     "deploy/keycloak/recovery-src/META-INF/services/org.keycloak.events.EventListenerProviderFactory",
+)
+
+OPERATOR_FILES = BUILD_FILES[3:]
+BUILD_FILES += (
+    "tools/build_assets.py", "assets/web/graphmind.css", "assets/web/graphmind.js",
 )
 
 
@@ -49,10 +54,16 @@ def inspect_archive(path: Path) -> None:
         allowed = ("graphmind/", "graphmind_rag_mcp-0.1.0.dist-info/", "graphmind_rag_mcp-0.1.0.data/data/share/graphmind/")
         if not all(name.startswith(allowed) for name in names):
             raise RuntimeError("Wheel contains files outside the explicit package/operator allowlist")
-        for required in ("graphmind/parsing.py", "graphmind/product_server.py", "graphmind/identity.py"):
+        for required in (
+            "graphmind/parsing.py", "graphmind/product_server.py", "graphmind/identity.py",
+            "graphmind/rag/graphmind/engine.py", "graphmind/rag/graphmind/reference_graph.py",
+            "graphmind/rag/components/contracts.py", "graphmind/rag/components/pipeline.py",
+            "graphmind/rag/components/vector_store.py", "graphmind/web/assets.py",
+            "graphmind/web/static/graphmind.css", "graphmind/web/static/graphmind.js",
+        ):
             if required not in names:
                 raise RuntimeError(f"Wheel omitted required module: {required}")
-        for required in BUILD_FILES[3:]:
+        for required in OPERATOR_FILES:
             if required == "MANIFEST.in":
                 continue
             suffix = "/share/graphmind/" + required
@@ -67,7 +78,7 @@ def inspect_archive(path: Path) -> None:
             allowed |= relative.startswith("src/graphmind/") or relative.startswith("src/graphmind_rag_mcp.egg-info/")
             if not allowed:
                 raise RuntimeError(f"Source archive contains non-allowlisted file: {relative}")
-    forbidden = ("__pycache__", ".pyc", ".pyo", "/.env", "/docs/", "/Crawler/", "/VectorStore/")
+    forbidden = ("__pycache__", ".pyc", ".pyo", "/.env", "/docs/", "/legacy/", "/Crawler/", "/VectorStore/")
     for name in names:
         # The secret-free .env.example is a required template, not a runtime dotenv.
         if name.endswith("/.env.example"):
@@ -97,7 +108,8 @@ def main() -> None:
         shutil.copytree(ROOT / "src" / "graphmind", snapshot / "src" / "graphmind",
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
         dist = root / "dist"
-        run([sys.executable, "-m", "build", "--no-isolation", "--outdir", dist, snapshot], cwd=root, env=env)
+        run([sys.executable, "-m", "build", "--no-isolation", "--config-setting=--build-option=--bdist-dir=b",
+             "--outdir", dist, snapshot], cwd=root, env=env)
         artifacts = sorted(dist.iterdir())
         if len(artifacts) != 2:
             raise RuntimeError("Expected exactly one wheel and one source archive")
@@ -107,12 +119,16 @@ def main() -> None:
         target_venv = root / "installed"
         venv.EnvBuilder(with_pip=True).create(target_venv)
         python = target_venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-        run([python, "-m", "pip", "install", "--constraint", snapshot / "constraints/core-py313.txt",
-             "--constraint", snapshot / "constraints/linux-py313.txt",
+        run([python, "-m", "pip", "install", "--constraint", snapshot / "config/constraints/core-py313.txt",
+             "--constraint", snapshot / "config/constraints/linux-py313.txt",
              f"{wheel}[test]"], cwd=root, env=env)
         run([python, "-m", "pip", "check"], cwd=root, env=env)
         run([python, "-c", "import graphmind, pathlib, sys; p=pathlib.Path(graphmind.__file__).resolve(); "
              "assert p.is_relative_to(pathlib.Path(sys.prefix).resolve()), p; print('Installed import:', p)"], cwd=root, env=env)
+        run([python, "-c", "from importlib.resources import files; "
+             "from graphmind.web.assets import ASSET_NAMES, read_asset; "
+             "assert all(files('graphmind.web').joinpath('static', n).is_file() and read_asset(n) "
+             "for n in ASSET_NAMES); print('Installed browser resources: passed')"], cwd=root, env=env)
         run([python, "-m", "graphmind.cli", "--help"], cwd=root, env=env)
         run([python, "-m", "graphmind.cli", "serve", "--help"], cwd=root, env=env)
         run([python, "-m", "graphmind.cli", "accounts", "--help"], cwd=root, env=env)
@@ -122,7 +138,8 @@ def main() -> None:
         run([python, "-c", "import graphmind, pathlib, sys; "
              "assert pathlib.Path(graphmind.__file__).resolve().is_relative_to(pathlib.Path(sys.prefix).resolve())"],
             cwd=root, env=env)
-        run([python, "-B", "-m", "unittest", "discover", "-s", ROOT / "tests", "-v"], cwd=root, env=env)
+        run([python, "-B", "-m", "unittest", "discover", "-s", ROOT / "tests",
+             "-t", ROOT, "-v"], cwd=root, env=env)
         report = {
             "python": sys.version.split()[0], "platform": sys.platform,
             "installed_wheel_suite": "passed", "pip_check": "passed", "archive_allowlist": "passed",

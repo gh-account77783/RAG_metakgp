@@ -10,12 +10,13 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from .config import Settings
-from .domain import Outcome
+from .rag.components.contracts import Outcome
 from .errors import GraphMindError
 from .evaluation import EvaluationRunner, FrozenEvaluationDataset
 from .providers import ExtractiveProvider
 from .service import GraphMindApplication, build_embedding
-from .storage import MemoryGraphStore, MemoryVectorStore
+from .rag.components.vector_store import MemoryVectorStore
+from .rag.graphmind.reference_graph import MemoryGraphStore
 
 
 def _parser() -> argparse.ArgumentParser:
