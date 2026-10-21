@@ -28,6 +28,19 @@ python tools/release_bundle.py freeze /private/candidate --extra test
 python tools/release_bundle.py verify /private/candidate
 ```
 
+To resolve a new bundle directly from the built package and constraints, use a
+new destination directory:
+
+```console
+python tools/release_bundle.py collect /private/candidate --project-wheel /private/graphmind_rag_mcp-0.1.0-py3-none-any.whl --extra test --constraint config/constraints/core-py313.txt --constraint config/constraints/linux-py313.txt
+```
+
+Collection permits wheels only and uses the official PyPI index in pip's isolated
+mode. Repeat `--artifact /private/reviewed.whl` for separately qualified local
+wheels such as CPU-only inference builds. The manifest records their hashes and
+the constraint-file hashes. A failed resolver leaves `collection.log` and an
+incomplete directory; use a different destination for the next attempt.
+
 The tool rejects an incomplete or incompatible closure, unavailable extras,
 duplicate distributions, foreign wheels/targets, direct-URL dependencies, changed
 wheel/lock/notice bytes and attempts to overwrite a completed bundle. Verification
@@ -43,9 +56,15 @@ For a previously verified bundle, a fresh isolated environment installs its
 Python closure without a package index:
 
 ```console
-python -m pip install --no-index --only-binary=:all: --find-links /private/candidate/wheelhouse --require-hashes -r /private/candidate/requirements.lock
-python -m pip check
+python tools/release_bundle.py install /private/candidate --environment /private/new-environment
 ```
+
+Installation verifies the bundle before creating the environment, then runs pip
+with `--no-index`, `--only-binary=:all:` and `--require-hashes`, followed by
+`pip check`. It refuses an existing environment or a path inside the bundle.
+`bundle-install.json` records success only after both commands pass; a failed
+installation retains its environment and log for diagnosis. This installs the
+Python closure; configure native services separately.
 
 Keep the bundle manifest's approved hash outside the bundle as well. Hashes
 identify bytes; they do not authenticate an arbitrary manifest or establish

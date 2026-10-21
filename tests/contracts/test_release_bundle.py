@@ -1,11 +1,14 @@
 """Offline bundle integrity and dependency-closure contracts, using synthetic wheels."""
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
-from tools.release_bundle import freeze, verify
+from tools.release_bundle import collect, freeze, install, verify
 
 
 class ReleaseBundleTests(unittest.TestCase):
@@ -23,8 +26,66 @@ class ReleaseBundleTests(unittest.TestCase):
         metadata += "".join(f"Provides-Extra: {value}\n" for value in extras)
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr(directory + "/METADATA", metadata)
+            archive.writestr(directory + "/WHEEL", f"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: {tag}\n")
+            archive.writestr(directory + "/RECORD", "")
             archive.writestr(directory + "/licenses/LICENSE", b"synthetic retained notice\n")
         return path
+
+    def test_collect_local_wheel_then_install_fresh_offline_environment(self):
+        wheel = self.project()
+        candidate = self.bundle / "candidate"
+        manifest = collect(candidate, wheel)
+        self.assertEqual(manifest["provenance"]["project_sha256"], manifest["wheels"][0]["sha256"])
+        environment = self.bundle / "isolated"
+        receipt = install(candidate, environment)
+        self.assertTrue(receipt["offline_install"])
+        self.assertTrue(receipt["pip_check"])
+        executable = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        result = subprocess.run([str(executable), "-I", "-c",
+                                 "import importlib.metadata; print(importlib.metadata.version('graphmind-rag-mcp'))"],
+                                check=True, capture_output=True, text=True)
+        self.assertEqual(result.stdout.strip(), "1.0")
+        self.assertEqual(json.loads((environment / "bundle-install.json").read_text()), receipt)
+        with self.assertRaises(FileExistsError):
+            collect(candidate, wheel)
+        with self.assertRaisesRegex(ValueError, "new environment"):
+            install(candidate, environment)
+
+    def test_failed_collection_retains_log_without_completion_and_cannot_be_reused(self):
+        wheel = self.project()
+        candidate = self.bundle / "failed-candidate"
+        with patch("tools.release_bundle.subprocess.run", side_effect=subprocess.CalledProcessError(1, "pip")):
+            with self.assertRaises(subprocess.CalledProcessError):
+                collect(candidate, wheel)
+        self.assertTrue((candidate / "collection.log").is_file())
+        self.assertFalse((candidate / "manifest.json").exists())
+        with self.assertRaises(FileExistsError):
+            collect(candidate, wheel)
+
+    def test_install_rejects_tampered_bundle_before_creating_environment(self):
+        wheel = self.project()
+        freeze(self.bundle)
+        wheel.write_bytes(wheel.read_bytes() + b"changed")
+        environment = self.bundle.parent / (self.bundle.name + "-env")
+        with self.assertRaisesRegex(ValueError, "bytes changed"):
+            install(self.bundle, environment)
+        self.assertFalse(environment.exists())
+
+    def test_failed_install_retains_environment_without_success_receipt(self):
+        self.project()
+        freeze(self.bundle)
+        environment = self.bundle / "new-environment"
+        # A bundle cannot contain its own mutable installation.
+        with self.assertRaisesRegex(ValueError, "outside the bundle"):
+            install(self.bundle, environment)
+        candidate = self.bundle / "candidate"
+        collect(candidate, next((self.bundle / "wheelhouse").glob("*.whl")))
+        with patch("tools.release_bundle.venv.EnvBuilder"), patch(
+                "tools.release_bundle.subprocess.run", side_effect=subprocess.CalledProcessError(1, "pip")):
+            with self.assertRaises(subprocess.CalledProcessError):
+                install(candidate, environment)
+        self.assertTrue((environment / "bundle-install.log").exists())
+        self.assertFalse((environment / "bundle-install.json").exists())
 
     def project(self, **kwargs):
         return self.wheel("graphmind_rag_mcp", **kwargs)
