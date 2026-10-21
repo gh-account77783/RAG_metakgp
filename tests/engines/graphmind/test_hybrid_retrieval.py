@@ -21,6 +21,9 @@ class FixtureReranker:
     def score(self, question, passages):
         return [0.9] * len(passages)
 
+    def score_pairs(self, pairs):
+        return [0.9] * len(pairs)
+
 
 class NoDenseHits(MemoryVectorStore):
     def search(self, *args, **kwargs):
@@ -87,6 +90,32 @@ class HybridPrimitiveTests(unittest.TestCase):
 
 
 class HybridLifecycleTests(unittest.TestCase):
+    def test_reference_ranking_binds_original_target_title_and_keeps_both_sources(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            course, faculty = root / "course.md", root / "opaque-name.md"
+            course.write_text("# OR123\n\nInstructor: [[opaque-name.md]]\n", encoding="utf-8")
+            faculty.write_text("# Dr Rowan\n\nYear joined: 2009.\n", encoding="utf-8")
+            with self.application(root) as app:
+                first, target = run_submission(app, course), run_submission(app, faculty)
+                class PronounReranker:
+                    pairs = []
+                    def score(self, question, passages):
+                        return [0.9 if "Instructor:" in passage else 0.001 for passage in passages]
+                    def score_pairs(self, pairs):
+                        self.pairs.extend(pairs)
+                        return [0.8 if "Referenced document: Dr Rowan" in question and "2009" in passage
+                                else 0.001 for question, passage in pairs]
+                reranker = app.hybrid.reranker = PronounReranker()
+                evidence = app.retrieval.retrieve("When did the OR123 instructor join?")
+                self.assertEqual({item.document_id for item in evidence},
+                                 {first.document.document_id, target.document.document_id})
+                linked = [item for item in evidence if item.document_id == target.document.document_id]
+                self.assertEqual(len(linked), 1)  # heading/body aliases share one original passage
+                self.assertEqual(linked[0].source_title, "Dr Rowan")
+                self.assertEqual(linked[0].via, "graph")
+                self.assertTrue(reranker.pairs)
+
     def application(self, root, *, vector=None, graph=None, baseline=None, chunk_size=2200):
         settings = make_settings(root, retrieval_profile="hybrid", reranker_dir=str(root / "fixture-model"),
                                  chunk_size=chunk_size, chunk_overlap=12)

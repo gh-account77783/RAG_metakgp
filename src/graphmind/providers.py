@@ -158,6 +158,7 @@ class OllamaProvider:
                 {
                     "citation_id": item.citation_id,
                     "source": item.display_name,
+                    "title": item.source_title or item.display_name,
                     "locator": item.locator,
                     "retrieval_path": item.via,
                     "text": excerpt,

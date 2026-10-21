@@ -92,15 +92,18 @@ class LocalCrossEncoder:
                              "configured; verified by worker before use" if available else "model missing")
 
     def score(self, question: str, passages: list[str]) -> list[float]:
-        if not passages:
+        return self.score_pairs([(question, passage) for passage in passages])
+
+    def score_pairs(self, pairs: list[tuple[str, str]]) -> list[float]:
+        if not pairs:
             return []
-        if len(passages) > 50:
+        if len(pairs) > 50:
             raise ValueError("Rerank pool exceeds its limit")
         output = self.inference.run("rerank", {"model_dir": str(self.directory),
-                                               "question": question, "passages": passages})
+                                               "pairs": pairs})
         try:
             scores = [float(value) for value in output["scores"]]
-            if len(scores) != len(passages) or any(not math.isfinite(value) for value in scores):
+            if len(scores) != len(pairs) or any(not math.isfinite(value) for value in scores):
                 raise ValueError("Invalid scores")
             return scores
         except (KeyError, TypeError, ValueError) as exc:

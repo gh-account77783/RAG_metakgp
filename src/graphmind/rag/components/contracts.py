@@ -104,6 +104,7 @@ class Evidence:
     excerpt: str
     via: str
     score: float
+    source_title: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +136,7 @@ class QueryResult:
                     "excerpt": item.excerpt,
                     "via": item.via,
                     "score": item.score,
+                    **({"source_title": item.source_title} if item.source_title else {}),
                 }
                 for item in self.citations
             ],

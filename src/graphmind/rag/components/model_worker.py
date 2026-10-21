@@ -25,7 +25,7 @@ def run(request: dict) -> dict:
                              trust_remote_code=False, token=False, max_length=1024,
                              model_kwargs={"use_safetensors": True})
         with torch.inference_mode():
-            scores = model.predict([(request["question"], passage) for passage in request["passages"]],
+            scores = model.predict(request["pairs"],
                                    batch_size=4, show_progress_bar=False)
         return {"ok": True, "scores": scores.tolist()}
     raise ValueError("Unsupported worker operation")

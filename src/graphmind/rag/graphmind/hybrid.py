@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import re
+from itertools import zip_longest
 
 from ...errors import EngineUnavailableError, EmbeddingMismatchError, ManifestUnavailableError, PublicationError, QueryBudgetError
 from ...sources import SourceService
@@ -41,7 +42,8 @@ class HybridGraphMind:
                 "reranker": (self.reranker.identity() if hasattr(self.reranker, "identity")
                              else {"implementation": type(self.reranker).__name__}),
                 "candidate_limit": 50, "rrf_k": 60, "min_relevance": self.min_relevance,
-                "reference_hops": 1, "per_source_evidence_limit": 3}
+                "reference_hops": 1, "per_source_evidence_limit": 3,
+                "query_recipe": "source-title-reference-binding-v2"}
 
     def recipe(self) -> IndexRecipe:
         return IndexRecipe.create("graphmind", REVISION,
@@ -108,10 +110,18 @@ class HybridGraphMind:
                        != {item["origin_chunk_id"] for item in payload}):
                 raise ManifestUnavailableError("Derived GraphMind inventories differ")
 
-    def _pool(self, query: str, heads: dict, cache: dict) -> list[dict]:
+    def _pool(self, query: str, heads: dict, cache: dict, *, references=False) -> list[dict]:
         identifiers = set(heads)
-        lexical = self.lexical.search(query, index_ids=identifiers, limit=50)
-        dense = [item for item in self.vector.search(self.installation_id, query, 50, active_version_ids=identifiers)
+        def source_title(index):
+            version = self.indexes.metadata.version(index.source_version_id)
+            document, _ = self.sources.active(version.document_id, version.version_id)
+            chunks = self.indexes.metadata.all_chunks_for_version(version.version_id)
+            return (chunks[0].text.splitlines()[0][:500] if chunks and
+                    chunks[0].locator.startswith('heading "') else document.display_name)
+        titles = {key: source_title(index) for key, index in heads.items()} if references else {}
+        search_query = query + ("\nReferenced documents: " + "; ".join(titles.values()) if references else "")
+        lexical = self.lexical.search(search_query, index_ids=identifiers, limit=50)
+        dense = [item for item in self.vector.search(self.installation_id, search_query, 50, active_version_ids=identifiers)
                  if item.score >= self.min_vector_score]
         fused = reciprocal_rank_fusion([item.chunk_id for item in lexical],
                                         [item.chunk_id for item in dense], limit=50)
@@ -129,15 +139,22 @@ class HybridGraphMind:
                     raise ManifestUnavailableError("Passage inventory differs from the derived index")
                 document, version = self.sources.active(
                     self.indexes.metadata.version(index.source_version_id).document_id, index.source_version_id)
-                cache[owner] = {item["unit_id"]: {**item, "document": document, "version": version}
+                cache[owner] = {item["unit_id"]: {**item, "document": document, "version": version,
+                                               "title": titles.get(owner) or source_title(index)}
                                 for item in payload}
             if identifier not in cache[owner]:
                 raise ManifestUnavailableError("Retrieved passage is outside its authenticated inventory")
-            records.append(cache[owner][identifier])
+            records.append(dict(cache[owner][identifier]))
         if records:
             self.sources.assert_current(item["version"].version_id for item in records)
-            scores = self.reranker.score(query, [
-                f'{item["document"].display_name}\n{item["locator"]}\n{item["text"]}' for item in records])
+            passages = [f'{item["title"]}\n{item["document"].display_name}\n{item["locator"]}\n{item["text"]}'
+                        for item in records]
+            if references:
+                scores = self.reranker.score_pairs([
+                    (query + "\nReferenced document: " + item["title"], passage)
+                    for item, passage in zip(records, passages, strict=True)])
+            else:
+                scores = self.reranker.score(query, passages)
             if len(scores) != len(records) or any(not math.isfinite(float(value)) for value in scores):
                 raise ManifestUnavailableError("Reranker returned an invalid inventory")
             for item, score in zip(records, scores, strict=True):
@@ -187,18 +204,25 @@ class HybridGraphMind:
             [item["origin_chunk_id"] for item in chosen], active_version_ids=source_versions, limit=self.graph_limit)
         target_heads = {key: value for key, value in heads.items()
                         if self.indexes.metadata.version(value.source_version_id).document_id in targets}
-        linked = self._pool(query, target_heads, cache) if target_heads else []
+        linked = self._pool(query, target_heads, cache, references=True) if target_heads else []
         linked_ids = {item["unit_id"] for item in linked}
         evidence, seen, counts = [], set(), {}
-        for item in sorted(chosen + linked, key=lambda item: (-item["score"], item["unit_id"])):
-            body_key = re.sub(r"\s+", " ", item["text"].strip().casefold())
+        # Different bound questions produce different score scales. Interleave
+        # ranked lists so both the reference origin and its target retain room.
+        merged = [item for pair in zip_longest(chosen, linked) for item in pair if item is not None]
+        for item in merged:
+            body = item["text"].strip()
+            heading = re.match(r'^heading "([^"]+)"[^;]*;', item["locator"])
+            if heading and body.startswith(heading[1] + "\n"):
+                body = body[len(heading[1]) + 1:]
+            body_key = (item["version"].version_id, re.sub(r"\s+", " ", body.casefold()))
             document = item["document"]
             if (body_key in seen or item["score"] < self.min_relevance
                     or counts.get(document.document_id, 0) >= 3):
                 continue
             evidence.append(Evidence(item["unit_id"], document.document_id, item["version"].version_id,
                 document.display_name, item["locator"], item["text"],
-                "graph" if item["unit_id"] in linked_ids else "hybrid", item["score"]))
+                "graph" if item["unit_id"] in linked_ids else "hybrid", item["score"], item["title"]))
             seen.add(body_key)
             counts[document.document_id] = counts.get(document.document_id, 0) + 1
             if len(evidence) >= self.max_evidence:
