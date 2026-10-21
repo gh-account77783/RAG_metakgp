@@ -1,5 +1,6 @@
 """Offline bundle integrity and dependency-closure contracts, using synthetic wheels."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -34,10 +35,18 @@ class ReleaseBundleTests(unittest.TestCase):
     def test_collect_local_wheel_then_install_fresh_offline_environment(self):
         wheel = self.project()
         candidate = self.bundle / "candidate"
-        manifest = collect(candidate, wheel)
+        parent = self.bundle / "parent-import-path"
+        metadata = parent / "unrelated-1.0.dist-info"
+        metadata.mkdir(parents=True)
+        (metadata / "METADATA").write_text(
+            "Metadata-Version: 2.4\nName: unrelated\nVersion: 1.0\nRequires-Dist: absent-package==1.0\n")
+        polluted = {"PYTHONPATH": str(parent), "PYTHONHOME": str(self.bundle / "not-a-python-home")}
+        with patch.dict(os.environ, polluted):
+            manifest = collect(candidate, wheel)
         self.assertEqual(manifest["provenance"]["project_sha256"], manifest["wheels"][0]["sha256"])
         environment = self.bundle / "isolated"
-        receipt = install(candidate, environment)
+        with patch.dict(os.environ, polluted):
+            receipt = install(candidate, environment)
         self.assertTrue(receipt["offline_install"])
         self.assertTrue(receipt["pip_check"])
         executable = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")

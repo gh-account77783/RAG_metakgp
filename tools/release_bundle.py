@@ -5,6 +5,7 @@ import argparse
 from email.parser import BytesParser
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import subprocess
@@ -21,6 +22,13 @@ from packaging.utils import canonicalize_name, parse_wheel_filename
 
 
 PROJECT = "graphmind-rag-mcp"
+
+
+def pip_environment() -> dict[str, str]:
+    environment = {key: value for key, value in os.environ.items()
+                   if key not in {"PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE"}}
+    environment["PYTHONNOUSERSITE"] = "1"
+    return environment
 
 
 def digest(path: Path) -> str:
@@ -207,7 +215,7 @@ def collect(bundle: Path, project_wheel: Path, *, constraints=(), extras=(), art
     requirement = str(project_wheel) + ("[" + ",".join(selected) + "]" if selected else "")
     command += [requirement, *map(str, artifacts)]
     with (bundle / "collection.log").open("wb") as log:
-        subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
+        subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, env=pip_environment())
     return freeze(bundle, extras=selected, provenance=provenance)
 
 
@@ -226,9 +234,10 @@ def install(bundle: Path, environment: Path) -> dict:
         subprocess.run([str(executable), "-m", "pip", "--isolated", "--disable-pip-version-check",
                         "install", "--no-index", "--only-binary=:all:", "--find-links",
                         str(bundle / "wheelhouse"), "--require-hashes", "-r",
-                        str(bundle / "requirements.lock")], stdout=log, stderr=subprocess.STDOUT, check=True)
+                        str(bundle / "requirements.lock")], stdout=log, stderr=subprocess.STDOUT,
+                       check=True, env=pip_environment())
         subprocess.run([str(executable), "-m", "pip", "--isolated", "check"],
-                       stdout=log, stderr=subprocess.STDOUT, check=True)
+                       stdout=log, stderr=subprocess.STDOUT, check=True, env=pip_environment())
     receipt = {"manifest_sha256": digest(bundle / "manifest.json"), "target": manifest["target"],
                "wheels": len(manifest["wheels"]), "offline_install": True, "pip_check": True}
     # Receipt exists only after both mandatory commands succeed; keep failed logs.
