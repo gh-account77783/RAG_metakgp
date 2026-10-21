@@ -80,7 +80,14 @@ platforms using that data scheme; inspect the installed file inventory).
 Real-store tests and package-build verification require the development checkout;
 original data and tests are deliberately not shipped in the wheel.
 
-## Mandatory acceptance matrix
+## Full acceptance matrix and checkpoint boundary
+
+As of 2026-10-21 the agreed functional P5/P6 and bounded native identity-component
+checkpoints are complete. The matrix below is the broader qualification procedure,
+not a claim every variant passed or remains a functional-milestone blocker.
+Consolidated edge/security cases remain P8; quality, full native services/reboot,
+resources and backup/restore remain P7. Keep failures/pending variants explicit
+and repeat affected checks for changes. Package CI is not real-service acceptance.
 
 Record pass/fail/pending, timestamp, candidate hash, exact versions, expected and
 observed behavior, sanitized evidence and cleanup for **every** row. Stop public

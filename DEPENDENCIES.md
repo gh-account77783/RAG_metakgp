@@ -1,6 +1,6 @@
 # Dependency Inventory
 
-Updated: 2026-10-03
+Status reconciled: 2026-10-21 (dependency pins unchanged)
 
 This inventory separates the installable GraphMind package from development-only
 legacy code and external model or service components. It records dependency facts;
@@ -14,8 +14,9 @@ The package metadata in `pyproject.toml` currently declares:
 Supported interpreter baseline is CPython 3.13 (`>=3.13,<3.14`), deliberately
 narrowed from the unqualified >=3.11 claim. This does not claim native OS service
 support. Offline CI now installs under the snapshot on Ubuntu/Windows and runs
-clean built-wheel verification; actual runs on the changed candidate still need
-CI/EC2 evidence. Node is a test-only prerequisite for the browser-script fault
+clean built-wheel verification. Exact commit `587140a` passed both OS jobs and
+secret scan in [CI39461334545](https://github.com/gh-account77783/RAG_metakgp/actions/runs/39461334545).
+This is not native service/reboot or release qualification. Node is a test-only prerequisite for the browser-script fault
 regression, not an application runtime dependency.
 
 | Purpose | Direct dependency |
@@ -41,8 +42,9 @@ availability.
 
 `constraints/linux-py313.txt` adds `uvloop==0.22.1`, the Linux-only dependency
 of Chroma's `uvicorn[standard]` extra. Its [published CPython 3.13 Linux wheels](https://pypi.org/project/uvloop/0.22.1/)
-and installed Uvicorn metadata support this overlay; actual Ubuntu resolution,
-installation and runtime remain acceptance checks, not inferred passes. Apply
+and installed Uvicorn metadata support this overlay. Actual Ubuntu constrained
+resolution/install tests pass in recorded EC2 and exact-commit CI evidence;
+full native services/release qualification remain separate. Apply
 both constraints files. Inventory tests follow extras/markers to require exact
 pins across the Windows and Linux dependency closures.
 

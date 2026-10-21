@@ -1,5 +1,12 @@
 # GraphMind identity service candidate
 
+Status reconciled 2026-10-21: bounded account/browser/Google/MCP integration
+and PG/Java/Keycloak/provider feasibility on Windows 11 and Server 2025 pass.
+The steps below remain required for new deployments; they are not all missing
+from the tested fixture. Full application services/reboot, backups and exhaustive
+recovery/security release gates remain unqualified. No version/settings change
+is made in this documentation update.
+
 GraphMind uses Keycloak 26.7.5 as its only credential, account, grant, token,
 verification, and identity-link authority. PostgreSQL 17 is the selected
 same-host production database candidate. Keycloak's development-file database is
@@ -63,8 +70,9 @@ Account CLI mutations are serialized by a host-local lock and read back after
 update and session revocation. Do not bypass them with concurrent console/API
 user edits. Test deleted -> disable -> enable denial, repeated delete, explicit
 restore, security-attribute persistence across restart, and attempted reader
-attribute edits against real Keycloak. These assets have offline contract tests;
-real profile application and registration remain integration gates.
+attribute edits against real Keycloak. These assets have offline contracts and
+recorded real profile/registration proof. Repeat affected deployment checks
+after changes; broader account/broker/security variants remain release work.
 The JSON deliberately omits `unmanagedAttributePolicy`: disabled is the default.
 The pinned 26.7.5 REST parser rejects the literal UI label `DISABLED`; its
 [configuration enum](https://raw.githubusercontent.com/keycloak/keycloak/26.7.5/core/src/main/java/org/keycloak/representations/userprofile/config/UPConfig.java)

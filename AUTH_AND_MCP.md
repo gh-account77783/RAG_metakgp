@@ -1,8 +1,12 @@
 # GraphMind browser, identity, and MCP contract
 
-This is the implementation contract for the P5/P6 candidate. It is not a claim
-that Google, SMTP, Claude Code, EC2, Windows 11, or Windows Server 2025 acceptance
-has already passed.
+This is the implementation contract for the browser/MCP service. As of
+2026-10-21 the owner-approved functional P5/P6 checkpoint is complete: real
+SMTP verification/recovery receipt, Google account linking and Google-only
+signup, two-reader browser and SDK/Claude local/hosted paths have recorded proof.
+Bounded native identity-component feasibility passes on Windows 11 and Server
+2025. Full native application services/reboot, factual quality, exhaustive
+security and release acceptance remain separate and unqualified.
 
 ## Identity ownership
 
@@ -83,8 +87,9 @@ Run `/mcp` in Claude Code and complete browser login, or use the official
 a saved named server; `--mcp-config` supplied to a model session does not add it
 to the CLI's saved configuration. Use `claude mcp get graphmind` to check that
 named server, not unrelated servers. Claude Code must be version
-2.1.64 or newer for the documented metadata override behavior; the exact tested
-version will be recorded during real-client acceptance. Readers install Claude
+2.1.64 or newer for the documented metadata override behavior; recorded
+functional acceptance used Claude Code 2.1.292 and independent SDK 2.0.1.
+Untested clients/versions are not automatically qualified. Readers install Claude
 Code or another MCP client, not the GraphMind server package.
 
 The tracked `.mcp.json` shows the same portable configuration without a secret.
@@ -190,12 +195,16 @@ launchers and proxies must also disable query/header/body logging, including
 callback error logs. See the [real acceptance procedure](deploy/acceptance/README.md)
 for the exact log-canary check; source tests cannot qualify a configured proxy.
 
-## Acceptance still required
+## Acceptance boundary and remaining qualification
 
-Before P5/P6 gates can be called complete, run the same candidate through real
-SMTP/email verification and failure, Google sign-in/linking, restart-safe account
-revocation, two-user browser isolation, Claude Code login/refresh/reconnect, and
-an independent MCP SDK client. Record native runtime startup on Ubuntu 24.04
-and exact client/runtime versions; keep the admin console private. Native
-Windows 11 and Windows Server 2025 component feasibility is a separate
-post-P6 checkpoint (phase P6.5), not evidence supplied by the Ubuntu run.
+The agreed functional P5/P6 and separate bounded Windows component checkpoints
+are complete. The full procedure in deploy/acceptance/README.md does not mean
+every edge variant passed. Deferred broker/mail expiry/replay/abuse, browser and
+client variants, claims/metadata, cancellation, dependency/security and recovery
+drills remain P8; recorded failures are not silently fixed.
+
+P7 owns full frozen local/hosted quality and manual citation-support review,
+resource/co-location limits, guided setup, complete native application services,
+reboot and consistent backup/restore/update. Bounded component startup is not
+a full Windows installation. Requalify affected flows after changes and keep
+admin interfaces private. No production/release clearance is claimed.
