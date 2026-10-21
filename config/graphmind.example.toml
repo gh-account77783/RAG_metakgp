@@ -32,6 +32,10 @@ answer_max_retries = 1
 answer_max_context_chars = 24000
 answer_max_output_tokens = 512
 retrieval_seed_limit = 4
+retrieval_profile = "legacy"
+# For the qualified hybrid recipe, set retrieval_profile="hybrid" and point to
+# an explicitly retained BAAI/bge-reranker-v2-m3 artifact directory. No auto download.
+reranker_dir = ""
 retrieval_graph_limit = 8
 retrieval_graph_scope = "chunk"
 retrieval_max_evidence = 12

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from .config import Settings
 from .rag.components.contracts import AdapterStatus
 from .rag.components.embeddings import EmbeddingProvider, HashEmbedding, OllamaEmbedding
@@ -11,6 +13,9 @@ from .jobs import DurableJobExecutor
 from .metadata import MetadataStore
 from .sources import SourceService
 from .rag.components.indexes import IndexRepository
+from .rag.components.artifacts import DerivedArtifactStore
+from .rag.components.local_inference import LocalCrossEncoder, LocalInference
+from .rag.graphmind.hybrid import HybridGraphMind
 from .parsing import IsolatedExtractor
 from .providers import AnswerProvider, OllamaProvider
 from .rag.components.pipeline import AnswerService
@@ -47,6 +52,8 @@ class GraphMindApplication:
         files: FileStore | None = None,
         extractor: IsolatedExtractor | None = None,
         embedding: EmbeddingProvider | None = None,
+        hybrid_vector: VectorStore | None = None,
+        reranker=None,
         failure_injector=None,
     ) -> None:
         self.settings = settings
@@ -63,6 +70,8 @@ class GraphMindApplication:
         self.files = files or PrivateFileStore(settings.data_dir, settings.files_dir)
         self.sources = SourceService(self.metadata, self.files, max_file_bytes=settings.max_file_bytes)
         self.indexes = IndexRepository(self.metadata, self.sources)
+        self.artifacts = DerivedArtifactStore(settings.data_dir, self.indexes)
+        self.inference = LocalInference(settings.data_dir)
         self.extractor = extractor or IsolatedExtractor(settings)
         self.extractor.cleanup_abandoned()
         self.vector = vector or ChromaVectorStore(
@@ -74,6 +83,16 @@ class GraphMindApplication:
             settings.neo4j_password,
             settings.neo4j_database,
         )
+        self.hybrid = None
+        if settings.retrieval_profile == "hybrid":
+            self.hybrid = HybridGraphMind(self.indexes, self.sources, self.artifacts,
+                hybrid_vector or ChromaVectorStore(str(settings.chroma_dir / "hybrid"),
+                                                   settings.collection_name + "_hybrid_v1", self.embedding),
+                self.graph, self.installation_id,
+                reranker or LocalCrossEncoder(Path(settings.reranker_dir), self.inference),
+                max_evidence=settings.retrieval_max_evidence, max_question_chars=settings.max_question_chars,
+                min_vector_score=settings.retrieval_min_vector_score,
+                seed_limit=settings.retrieval_seed_limit, graph_limit=settings.retrieval_graph_limit)
         self.ingestion = IngestionService(
             settings,
             self.metadata,
@@ -84,6 +103,8 @@ class GraphMindApplication:
             self.files,
             self.extractor,
             indexes=self.indexes,
+            backend=self.hybrid,
+            artifacts=self.artifacts,
             failure_injector=failure_injector,
         )
         self.jobs = DurableJobExecutor(
@@ -103,6 +124,8 @@ class GraphMindApplication:
             min_vector_score=settings.retrieval_min_vector_score,
             max_question_chars=settings.max_question_chars,
         )
+        if self.hybrid is not None:
+            self.retrieval = self.hybrid
         selected_provider = provider or OllamaProvider(
             settings.ollama_base_url,
             settings.ollama_api_key,
@@ -135,13 +158,18 @@ class GraphMindApplication:
         statuses = [
             self.files.readiness(),
             self.embedding.readiness(),
-            self.vector.readiness(),
+            (self.hybrid.vector if self.hybrid is not None else self.vector).readiness(),
             self.graph.readiness(),
         ]
+        if self.hybrid is not None and hasattr(self.hybrid.reranker, "readiness"):
+            statuses.append(self.hybrid.reranker.readiness())
         return tuple(statuses)
 
     def audit_manifest(self) -> AdapterStatus:
         try:
+            if self.hybrid is not None:
+                self.hybrid.audit()
+                return AdapterStatus("active-manifest", True, "ready")
             for document in self.metadata.list_documents():
                 if document.deleted_at is not None or document.active_version_id is None:
                     continue
@@ -171,6 +199,8 @@ class GraphMindApplication:
             return AdapterStatus("active-manifest", False, f"unavailable: {type(exc).__name__}")
 
     def close(self) -> None:
+        if self.hybrid is not None:
+            self.hybrid.vector.close()
         self.graph.close()
         self.vector.close()
 

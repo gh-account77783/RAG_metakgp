@@ -28,6 +28,8 @@ class GraphStore(Protocol):
         *, active_version_ids: set[str] | None = None,
     ) -> list[str]: ...
     def delete_document(self, installation_id: str, document_id: str) -> None: ...
+    def reference_targets(self, installation_id: str, seed_chunk_ids: Sequence[str], *,
+                          active_version_ids: set[str], limit: int = 8) -> list[str]: ...
     def close(self) -> None: ...
 
 
@@ -111,6 +113,21 @@ class MemoryGraphStore:
         for key, chunk in list(self._chunks.items()):
             if key[0] == installation_id and chunk.document_id == document_id:
                 del self._chunks[key]
+
+    def reference_targets(self, installation_id: str, seed_chunk_ids: Sequence[str], *,
+                          active_version_ids: set[str], limit: int = 8) -> list[str]:
+        seeds = [self._chunks[(installation_id, value)] for value in seed_chunk_ids
+                 if (installation_id, value) in self._chunks
+                 and self._chunks[(installation_id, value)].version_id in active_version_ids]
+        versions = {item.version_id for item in seeds}
+        names = {name for (installation, _), chunk in self._chunks.items()
+                 if installation == installation_id and chunk.version_id in versions
+                 for name in chunk.reference_names}
+        active_documents = {chunk.document_id for (installation, _), chunk in self._chunks.items()
+                            if installation == installation_id and chunk.version_id in active_version_ids}
+        return sorted({document.document_id for (installation, _), document in self._documents.items()
+                       if installation == installation_id and document.normalized_name in names
+                       and document.document_id in active_documents})[:max(0, limit)]
 
     def close(self) -> None:
         return None
@@ -329,6 +346,27 @@ class Neo4jGraphStore:
             )
         except Exception as exc:
             raise DependencyUnavailableError("Neo4j document cleanup failed") from exc
+
+    def reference_targets(self, installation_id: str, seed_chunk_ids: Sequence[str], *,
+                          active_version_ids: set[str], limit: int = 8) -> list[str]:
+        if not seed_chunk_ids or not active_version_ids or limit <= 0:
+            return []
+        try:
+            records, _, _ = self._get_driver().execute_query(
+                """UNWIND $seed_ids AS seed_id
+                   MATCH (seed:GraphMindChunk {installation_id:$installation_id,chunk_id:seed_id})
+                   WHERE seed.version_id IN $active_versions
+                   MATCH (source:GraphMindChunk {installation_id:$installation_id,
+                          document_id:seed.document_id,version_id:seed.version_id})
+                         -[:REFERENCES]->(target:GraphMindDocument {installation_id:$installation_id})
+                   MATCH (target)-[:HAS_VERSION]->(version:GraphMindVersion)
+                   WHERE version.version_id IN $active_versions
+                   RETURN DISTINCT target.document_id AS document_id ORDER BY document_id LIMIT $limit""",
+                installation_id=installation_id, seed_ids=list(seed_chunk_ids),
+                active_versions=sorted(active_version_ids), limit=int(limit), database_=self.database)
+            return [str(row["document_id"]) for row in records]
+        except Exception as exc:
+            raise DependencyUnavailableError("Neo4j reference-target retrieval failed") from exc
 
     def delete_installation(self, installation_id: str) -> None:
         try:

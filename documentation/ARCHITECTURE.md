@@ -98,12 +98,37 @@ a failed replacement preserves the previous source and usable head. Tombstones
 immediately deny eligibility, before the deletion job cleans stores and invalidates
 the index records.
 
-The schema upgrade registers metadata-verified legacy GraphMind chunk inventories
+The schema 3 upgrade registers metadata-verified legacy GraphMind chunk inventories
 without opening originals, vector stores or graph stores. It preserves their
 existing storage layout. GraphMind import/retry/delete jobs now use this lifecycle;
 other engine adapters remain unavailable. A derived artifact reference records a
 private manifest identity; its presence alone does not qualify a backend or prove
 that its artifact bytes have been verified.
+
+Schema 4 adds a derived FTS5 lexical index in the same database. The opt-in
+`retrieval_profile="hybrid"` builds `hybrid-context-v1` indexes with deterministic
+source title/locator context in a separate Chroma path/collection. BM25 and dense
+ranks are fused before a local cross-encoder ranks at most 50 passages. Explicit
+references are collected across selected source versions; another filtered search
+selects relevant passages inside at most the configured number of target documents.
+Evidence retains its original passage and locator instead of an 800-character
+prefix. Exact repeated passages are collapsed and evidence is bounded per source.
+
+Hybrid mode requires an explicitly retained, verified
+`BAAI/bge-reranker-v2-m3` directory in `reranker_dir`. It performs no automatic model
+download or hosted fallback. The worker loads safetensors locally, verifies the
+retained inventory, uses CPU inference and exits after each call to release weights.
+Calls share a host-local inference lock. Set `retrieval_seed_limit=8` for the initial
+hybrid recipe; existing evidence and context limits still apply. Hybrid references
+use document scope; the legacy chunk-scope setting does not change this algorithm.
+
+Import/reindex under the selected profile builds its recipe through the existing
+executor. A recipe can attach to the same unchanged source version without
+overwriting legacy vectors or originals. Switching profiles requires explicitly
+indexing the selected profile's sources; missing indexes fail clearly. The default
+remains `legacy` pending measured quality and release acceptance. These mechanisms
+do not establish an accuracy gain, native service qualification or working tree/
+visual engines.
 
 ## Assets and builds
 

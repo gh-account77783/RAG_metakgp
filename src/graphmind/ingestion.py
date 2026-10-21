@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import unicodedata
@@ -187,6 +188,8 @@ class IngestionService:
         extractor: IsolatedExtractor,
         *,
         indexes: IndexRepository | None = None,
+        backend=None,
+        artifacts=None,
         failure_injector: Callable[[str], None] | None = None,
     ) -> None:
         self.settings = settings
@@ -198,6 +201,7 @@ class IngestionService:
         self.files = files
         self.extractor = extractor
         self.indexes = indexes or IndexRepository(metadata)
+        self.backend, self.artifacts = backend, artifacts
         self.failure_injector = failure_injector
 
     @property
@@ -322,6 +326,10 @@ class IngestionService:
             created_at=utc_now(),
         )
         idempotency_key = f"import:{version_id}"
+        recipe = self.backend.recipe() if self.backend is not None else legacy_graphmind_recipe(version)
+        head = self.indexes.ready(document_id, "graphmind")
+        if self.backend is not None:
+            idempotency_key += ":" + recipe.fingerprint
         job_id = str(uuid.uuid5(uuid.UUID(self.installation_id), idempotency_key))
         stored_version = self.metadata.version(version_id)
         stored_job = self.metadata.job(job_id)
@@ -333,6 +341,7 @@ class IngestionService:
             and existing.active_version_id == version_id
             and stored_job is not None
             and stored_job.status is JobStatus.SUCCEEDED
+            and head is not None and head.recipe == recipe
         ):
             return ImportSubmission(existing, stored_version, stored_job, extraction.warnings)
 
@@ -345,7 +354,7 @@ class IngestionService:
         document = stored_document
         self.metadata.put_version(version)
         self.metadata.replace_chunks(version_id, chunks)
-        self.indexes.prepare(version_id, legacy_graphmind_recipe(version))
+        index = self.indexes.prepare(version_id, recipe)
         self._fail("after_metadata")
         job = self.metadata.put_job(
             Job(
@@ -357,10 +366,14 @@ class IngestionService:
                 status=JobStatus.QUEUED,
                 attempt_count=0,
                 available_at=utc_now(),
+                payload_json=(json.dumps({"schema_version": 1, "index_ids": [index.index_id]},
+                                         sort_keys=True, separators=(",", ":"))
+                              if self.backend is not None else "{}"),
             ),
             max_queued_jobs=self.settings.max_queued_jobs,
         )
-        if job.status is JobStatus.SUCCEEDED and (existing is None or existing.active_version_id != version_id):
+        if job.status is JobStatus.SUCCEEDED and (existing is None or existing.active_version_id != version_id
+                                                 or head is None or head.recipe != recipe):
             self.metadata.retry_job(job.job_id, include_succeeded=True)
             job = self.metadata.job(job.job_id) or job
         return ImportSubmission(document, version, job, extraction.warnings)
@@ -469,6 +482,12 @@ class IngestionService:
     def _process_delete(self, job: Job) -> None:
         self.metadata.assert_job_lease(job)
         self.indexes.invalidate_document(job)
+        if self.backend is not None:
+            self.backend.vector.delete_document(self.installation_id, job.document_id)
+        from .rag.graphmind.lexical import LexicalIndex
+        LexicalIndex(self.indexes).delete_document(job)
+        if self.artifacts is not None:
+            self.artifacts.delete_document(job)
         self.vector.delete_document(self.installation_id, job.document_id)
         self._progress(job, 35)
         self._fail("after_delete_vector")
@@ -483,6 +502,18 @@ class IngestionService:
 
     def process_job(self, job: Job) -> None:
         self.metadata.assert_job_lease(job)
+        if job.payload_json != "{}" and job.operation in {"import_txt", "import_document", "build_index"}:
+            targets = self.indexes._targets(job)
+            if (self.backend is None or targets != [self.backend.recipe().index_id(
+                    self.installation_id, job.version_id)]):
+                # Legacy derived jobs are handled below by the existing backend.
+                version = self.metadata.version(job.version_id)
+                if version is None or targets != [legacy_graphmind_recipe(version).index_id(
+                        self.installation_id, job.version_id)]:
+                    raise PublicationError("This index backend is not configured")
+            else:
+                self._process_selected(job, targets)
+                return
         if job.operation in {"import_txt", "import_document"}:
             self._process_import(job)
             return
@@ -498,3 +529,32 @@ class IngestionService:
             self._process_delete(job)
             return
         raise PublicationError(f"Unsupported job operation: {job.operation}")
+
+    def _process_selected(self, job: Job, targets: list[str]) -> None:
+        document = self.metadata.document(job.document_id)
+        version = self.metadata.version(job.version_id)
+        if document is None or version is None or document.deleted_at is not None:
+            from .errors import ManifestUnavailableError
+            raise ManifestUnavailableError("Index source is unavailable")
+        active = document.active_version_id == job.version_id and version.status is VersionStatus.READY
+        if job.operation == "build_index" and not active:
+            raise PublicationError("Reindex source changed; submit its current version")
+        try:
+            if not active:
+                self.metadata.set_version_status(job.version_id, VersionStatus.INDEXING, job=job)
+            for index_id in targets:
+                self.backend.build(job, index_id)
+            self._fail("before_publish")
+            if active:
+                self.indexes.activate(job)
+            else:
+                self.metadata.publish_version(job.version_id, job=job)
+            self._progress(job, 99)
+            self._fail("after_publish")
+        except Exception as exc:
+            current = self.metadata.document(job.document_id)
+            if (not active and not isinstance(exc, JobLeaseError)
+                    and (current is None or current.active_version_id != job.version_id)):
+                self.metadata.set_version_status(job.version_id, VersionStatus.FAILED,
+                                                getattr(exc, "code", "internal_error"), job=job)
+            raise

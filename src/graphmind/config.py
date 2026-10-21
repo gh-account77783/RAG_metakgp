@@ -54,6 +54,8 @@ _ENV_KEYS = {
     "GRAPHMIND_ANSWER_MAX_CONTEXT_CHARS": "answer_max_context_chars",
     "GRAPHMIND_ANSWER_MAX_OUTPUT_TOKENS": "answer_max_output_tokens",
     "GRAPHMIND_RETRIEVAL_SEED_LIMIT": "retrieval_seed_limit",
+    "GRAPHMIND_RETRIEVAL_PROFILE": "retrieval_profile",
+    "GRAPHMIND_RERANKER_DIR": "reranker_dir",
     "GRAPHMIND_RETRIEVAL_GRAPH_LIMIT": "retrieval_graph_limit",
     "GRAPHMIND_RETRIEVAL_GRAPH_SCOPE": "retrieval_graph_scope",
     "GRAPHMIND_RETRIEVAL_MAX_EVIDENCE": "retrieval_max_evidence",
@@ -172,6 +174,8 @@ class Settings:
     answer_max_context_chars: int = 24_000
     answer_max_output_tokens: int = 512
     retrieval_seed_limit: int = 4
+    retrieval_profile: str = "legacy"
+    reranker_dir: str = ""
     retrieval_graph_limit: int = 8
     retrieval_graph_scope: str = "chunk"
     retrieval_max_evidence: int = 12
@@ -322,6 +326,8 @@ class Settings:
 
         values["data_dir"] = _coerce_path(values["data_dir"], base)
         values["allowed_import_roots"] = _coerce_roots(values["allowed_import_roots"], base)
+        if values.get("reranker_dir"):
+            values["reranker_dir"] = str(_coerce_path(values["reranker_dir"], base))
         for key in (
             "max_file_bytes",
             "chunk_size",
@@ -382,6 +388,10 @@ class Settings:
         require_identity_secrets: bool = False,
         require_identity_admin_secret: bool = False,
     ) -> None:
+        if self.retrieval_profile not in {"legacy", "hybrid"}:
+            raise ConfigurationError("retrieval_profile must be legacy or hybrid")
+        if self.retrieval_profile == "hybrid" and not self.reranker_dir:
+            raise ConfigurationError("The hybrid profile requires a retained local reranker_dir")
         if not self.collection_id.strip() or not self.collection_name.strip():
             raise ConfigurationError("Collection identifiers cannot be empty")
         if self.max_file_bytes <= 0:
@@ -571,6 +581,8 @@ class Settings:
             "allowed_import_roots": [str(path) for path in self.allowed_import_roots],
             "collection_id": self.collection_id,
             "collection_name": self.collection_name,
+            "retrieval_profile": self.retrieval_profile,
+            "reranker_dir": self.reranker_dir,
             "max_file_bytes": self.max_file_bytes,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,

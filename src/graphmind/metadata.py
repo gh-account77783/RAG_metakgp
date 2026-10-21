@@ -26,7 +26,7 @@ from .errors import (
 )
 
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 def utc_now() -> str:
@@ -144,6 +144,13 @@ CREATE TABLE engine_index_heads (
 );
 """
 
+_MIGRATION_4 = """
+CREATE VIRTUAL TABLE graphmind_lexical USING fts5(
+    unit_id UNINDEXED, index_id UNINDEXED, title, locator, body,
+    tokenize='unicode61'
+);
+"""
+
 
 def _job_input(job: Job) -> str:
     try:
@@ -224,6 +231,10 @@ class MetadataStore:
                     from .rag.components.indexes import IndexRepository
                     IndexRepository(self).backfill_legacy(connection)
                     connection.execute("PRAGMA user_version = 3")
+                    current = 3
+                if current < 4:
+                    _execute_script(connection, _MIGRATION_4)
+                    connection.execute("PRAGMA user_version = 4")
                 connection.commit()
         except sqlite3.OperationalError as exc:
             if "locked" in str(exc).lower() or "busy" in str(exc).lower():

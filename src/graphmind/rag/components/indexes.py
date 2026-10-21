@@ -193,6 +193,30 @@ class IndexRepository:
                      AND d.deleted_at IS NULL AND v.status='ready' AND i.status='ready'""",
                 (document_id, engine_id)).fetchone())
 
+    def current(self, engine_id: str, *, revision: str | None = None) -> list[EngineIndex]:
+        with self.metadata.connection() as connection:
+            rows = connection.execute(
+                """SELECT i.* FROM engine_index_heads h JOIN engine_indexes i ON i.index_id=h.index_id
+                   JOIN versions v ON v.version_id=i.source_version_id
+                   JOIN documents d ON d.document_id=h.document_id
+                   WHERE h.engine_id=? AND i.engine_id=h.engine_id AND v.document_id=d.document_id
+                     AND d.active_version_id=v.version_id AND d.deleted_at IS NULL
+                     AND v.status='ready' AND i.status='ready' ORDER BY d.document_id""", (engine_id,))
+            result = [self._record(row) for row in rows]
+        return [item for item in result if revision is None or item.recipe.revision == revision]
+
+    def activate(self, job: Job) -> None:
+        """Publish ready recipes for an existing source without rolling its version back."""
+        with self.metadata.transaction() as connection:
+            self.metadata._assert_job_lease(connection, job)
+            current = connection.execute(
+                """SELECT 1 FROM documents d JOIN versions v ON v.version_id=d.active_version_id
+                   WHERE d.document_id=? AND d.active_version_id=? AND d.deleted_at IS NULL
+                   AND v.status='ready'""", (job.document_id, job.version_id)).fetchone()
+            if current is None:
+                raise ManifestUnavailableError("Index source changed before activation")
+            self.publish_source_heads(connection, job)
+
     def invalidate_document(self, job: Job) -> None:
         with self.metadata.transaction() as connection:
             self.metadata._assert_job_lease(connection, job)

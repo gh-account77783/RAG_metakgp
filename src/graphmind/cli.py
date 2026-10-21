@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .config import Settings
 from .rag.components.contracts import Job, Outcome
-from .errors import GraphMindError, JobNotFoundError
+from .errors import ConfigurationError, GraphMindError, JobNotFoundError
 from .evaluation import EvaluationRunner, FrozenEvaluationDataset
 from .providers import ExtractiveProvider
 from .service import GraphMindApplication, build_embedding
@@ -270,6 +270,8 @@ def main(argv: list[str] | None = None) -> None:
                     "graph": MemoryGraphStore(),
                 }
             )
+            if settings.retrieval_profile == "hybrid":
+                app_options["hybrid_vector"] = MemoryVectorStore(embedding)
         with GraphMindApplication(settings, **app_options) as app:
             if args.command == "init":
                 print(json.dumps(_status(app), indent=2))
@@ -333,6 +335,8 @@ def main(argv: list[str] | None = None) -> None:
                 if args.vector_only:
                     app.retrieval.graph_limit = 0
                 if args.graph_scope:
+                    if settings.retrieval_profile == "hybrid" and args.graph_scope != "document":
+                        raise ConfigurationError("The hybrid profile collects references from the source document")
                     app.retrieval.graph_scope = args.graph_scope
                 embedding_identity = (
                     app.embedding.identity()
@@ -356,6 +360,8 @@ def main(argv: list[str] | None = None) -> None:
                     embedding_identity=embedding_identity,
                     provider_identity=provider_identity,
                     retrieval_configuration={
+                        "profile": settings.retrieval_profile,
+                        "recipe": app.retrieval.identity() if hasattr(app.retrieval, "identity") else {},
                         "seed_limit": app.retrieval.seed_limit,
                         "graph_limit": app.retrieval.graph_limit,
                         "graph_scope": app.retrieval.graph_scope,

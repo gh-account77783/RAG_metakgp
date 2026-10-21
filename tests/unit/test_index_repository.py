@@ -151,6 +151,7 @@ class IndexRepositoryTests(unittest.TestCase):
         before = self.indexes.ready(self.original.document.document_id, "graphmind")
         installation = self.app.metadata.installation_id()
         with self.app.metadata.transaction() as connection:
+            connection.execute("DROP TABLE graphmind_lexical")
             connection.execute("DROP TABLE engine_index_heads")
             connection.execute("DROP TABLE engine_indexes")
             connection.execute("ALTER TABLE jobs DROP COLUMN payload_json")
