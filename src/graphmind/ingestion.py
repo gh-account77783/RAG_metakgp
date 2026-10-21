@@ -272,7 +272,9 @@ class IngestionService:
         canonical_text = "\n".join(segment.text for segment in extraction.segments)
         if not canonical_text.strip():
             raise EmptyDocumentError("Input produced no indexable text")
-        content_hash = _hash(canonical_text.encode("utf-8"))
+        # Original bytes are the shared source identity. Extracted text can stay
+        # identical while PDF figures, tables or other source content changes.
+        content_hash = _hash(raw)
         chunker_fingerprint = (
             self.txt_chunker_fingerprint if suffix == ".txt" else self.segment_chunker_fingerprint
         )

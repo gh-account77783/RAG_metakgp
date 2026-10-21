@@ -66,6 +66,16 @@ Targeted claims also preserve ordering within a document: an earlier pending
 version blocks the later submission with `job_not_ready`, rather than allowing
 a subsequent worker to roll the document back to the older queued version.
 
+## Original-file identity
+
+New imports hash the exact original bytes before combining the content hash
+with extraction/index fingerprints to identify a version. Replacing a PDF chart
+while retaining the same extracted text therefore creates a new version. The
+previous original and active version remain available until the replacement
+passes publication checks. Identical source bytes and fingerprints remain
+idempotent. Historical versions are retained without automatic migration or
+reimport; their older content hashes may describe extracted text.
+
 ## Assets and builds
 
 `assets/web/` is the single editable CSS/JS source, outside `src/`. The pinned
