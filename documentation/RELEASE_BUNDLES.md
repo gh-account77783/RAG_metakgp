@@ -73,6 +73,24 @@ The metadata/license inventory requires review. Model weights, frontend/native
 binaries, service configuration and their notices need separately versioned
 artifact records. The tool does not download models or call an inference provider.
 
+For public Hugging Face models with root-level safetensors/config/tokenizer
+assets, retain a separate model directory using an exact upstream commit:
+
+```console
+python tools/model_artifacts.py collect /private/model --model namespace/model --revision FULL_40_CHARACTER_COMMIT
+python tools/model_artifacts.py verify /private/model
+```
+
+This collector verifies upstream LFS SHA-256 or Git blob identities, records a
+SHA-256 for every retained file, preserves root README/license/notice files and
+refuses mutable revisions or an existing destination. Python code, pickle weights
+and nested files are excluded. It uses public HTTPS without reading a model token
+or credential cache. Failed transfers retain partial files without a completion
+manifest. Keep the approved `.graphmind-model.json` hash separately. Declared
+model-card terms still require software, backbone, model and data rights review.
+The collector performs no inference and does not enable an engine. Runtime
+adapters must load verified local paths with downloads and remote code disabled.
+
 These mechanics follow [pip repeatable installs](https://pip.pypa.io/en/stable/topics/repeatable-installs/)
 and [hash-checked installs](https://pip.pypa.io/en/stable/topics/secure-installs/).
 Combined engine compatibility, retained native bundles, clean installs and real
