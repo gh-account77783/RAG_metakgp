@@ -1,0 +1,44 @@
+# Combined optional tree/rerank/visual profile, CPython 3.13 x86-64.
+# Generated from native Windows/Ubuntu resolver reports on 2026-10-21.
+# Apply alongside core-py313.txt and linux-py313.txt.
+# CPU-local builds require the reviewed artifacts in config/artifacts/cpu-torch-cp313.json.
+# This is a resolver input; generate and retain native complete hash-checked bundles.
+boto3==1.43.116
+botocore==1.43.116
+cloudpickle==3.1.2
+fastuuid==0.14.0
+griffelib==2.4.0
+h2==4.4.1
+hpack==4.2.0
+hyperframe==6.1.0
+importlib-metadata==8.9.0
+jinja2==3.1.6
+jiter==0.17.0
+jmespath==1.1.0
+joblib==1.6.0
+litellm==1.107.0
+markupsafe==3.0.4
+mpmath==1.3.0
+narwhals==2.27.1
+networkx==3.7
+openai==3.35.1
+openai-agents==0.24.0
+pageindex==0.4.4
+pillow==13.0.0
+pypdf2==3.0.1
+pypdfium2==5.14.0
+regex==2026.9.29
+s3transfer==0.19.3
+safetensors==0.8.0
+scikit-learn==1.9.1
+scipy==1.18.1
+sentence-transformers==6.1.0
+sniffio==1.3.1
+sortedcontainers==2.4.0
+sympy==1.14.0
+threadpoolctl==3.7.0
+tiktoken==0.14.0
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+transformers==5.20.2
+zipp==4.1.1

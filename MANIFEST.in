@@ -1,8 +1,11 @@
 prune tests
 include documentation/AUTH_AND_MCP.md documentation/DEPENDENCIES.md config/graphmind.example.toml config/.env.example
 include documentation/ARCHITECTURE.md
+include documentation/RELEASE_BUNDLES.md
 include config/constraints/core-py313.txt
 include config/constraints/linux-py313.txt
+include config/constraints/engines-py313.txt
+include config/artifacts/cpu-torch-cp313.json
 recursive-include deploy/keycloak *.md *.json
 include deploy/keycloak/nginx-recovery.conf.example
 recursive-include deploy/keycloak/themes *.properties

@@ -1,7 +1,8 @@
 # Resolver snapshot for graphmind-rag-mcp 0.1.0 with the test extra.
 # Generated 2026-09-16 using CPython 3.13 and pip 26.2.1 on Windows x86-64.
+# PyJWT/websockets reconciled with the optional profile on 2026-10-21.
 # This records resolved versions; Ubuntu and both native Windows targets still require clean installs.
-PyJWT==2.14.0
+PyJWT==2.15.1
 PyPika==0.51.1
 PyYAML==6.0.3
 Pygments==2.21.0
@@ -95,6 +96,6 @@ urllib3==2.8.0
 uvicorn==0.53.0
 watchfiles==1.2.0
 websocket-client==1.9.2
-websockets==17.1
+websockets==16.0
 wheel==0.45.1
 yarl==1.25.1

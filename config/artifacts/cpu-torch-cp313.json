@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "implementation": "CPython",
+  "python": "3.13",
+  "publisher_index": "https://download.pytorch.org/whl/cpu/",
+  "rights_disposition": "requires review",
+  "profiles": {
+    "linux-x86_64": [
+      {
+        "name": "torch",
+        "version": "2.14.1+cpu",
+        "filename": "torch-2.14.1+cpu-cp313-cp313-manylinux_2_28_x86_64.whl",
+        "url": "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl",
+        "sha256": "331fa474e26e428e2e6af1143b2fdab19cee492d7d21897b8899ce1c14755662"
+      },
+      {
+        "name": "torchvision",
+        "version": "0.29.1+cpu",
+        "filename": "torchvision-0.29.1+cpu-cp313-cp313-manylinux_2_28_x86_64.whl",
+        "url": "https://download-r2.pytorch.org/whl/cpu/torchvision-0.29.1%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl",
+        "sha256": "7b27accfa545169ad070efb8a6679b25d63acc8513bbc0c05937c3ce94c13ea5"
+      }
+    ],
+    "win-amd64": [
+      {
+        "name": "torch",
+        "version": "2.14.1+cpu",
+        "filename": "torch-2.14.1+cpu-cp313-cp313-win_amd64.whl",
+        "url": "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1%2Bcpu-cp313-cp313-win_amd64.whl",
+        "sha256": "4eec5a4fadd7a18f9c75b97fdb374fbb579ce4b1604bf66eeb14dc2201d54def"
+      },
+      {
+        "name": "torchvision",
+        "version": "0.29.1+cpu",
+        "filename": "torchvision-0.29.1+cpu-cp313-cp313-win_amd64.whl",
+        "url": "https://download-r2.pytorch.org/whl/cpu/torchvision-0.29.1%2Bcpu-cp313-cp313-win_amd64.whl",
+        "sha256": "94590cee2298a7b6cc6512159781b577a322d0813baf1add3cf02db744138b31"
+      }
+    ]
+  }
+}

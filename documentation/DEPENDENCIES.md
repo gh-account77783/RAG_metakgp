@@ -1,6 +1,6 @@
 # Dependency Inventory
 
-Status reconciled: 2026-10-21 (dependency pins unchanged)
+Status reconciled: 2026-10-21 (core and optional profiles)
 
 This inventory separates the installable GraphMind package from development-only
 legacy code and external model or service components. It records dependency facts;
@@ -25,15 +25,15 @@ regression, not an application runtime dependency.
 | Graph client | `neo4j==6.3.0` |
 | PDF text extraction | `pypdf==6.18.0` |
 | MCP protocol/resource server | `mcp==2.0.1` |
-| OIDC ID-token validation | `PyJWT==2.14.0` |
+| OIDC ID-token validation | `PyJWT==2.15.1` |
 | Browser/ASGI routes | `starlette==1.6.0` |
 | ASGI process | `uvicorn==0.53.0` |
 | Test/build command | `build==1.6.0` |
 | Build backend | `setuptools==80.9.0` |
 | Wheel construction | `wheel==0.45.1` |
 
-[`config/constraints/core-py313.txt`](../config/constraints/core-py313.txt) captures all 97 direct,
-build, test, and transitive distributions resolved for CPython 3.13 Windows
+[`config/constraints/core-py313.txt`](../config/constraints/core-py313.txt) captures the 97-distribution core baseline (direct,
+build, test and transitive) originally resolved for CPython 3.13 Windows
 x86-64 with pip 26.2.1. A clean constrained Windows virtual-environment install
 and `pip check` passed on 2026-09-16. This file is an auditable resolver snapshot,
 not yet the release lock: Ubuntu, Windows 11, and Windows Server 2025 must each
@@ -47,6 +47,44 @@ resolution/install tests pass in recorded EC2 and exact-commit CI evidence;
 full native services/release qualification remain separate. Apply
 both constraints files. Inventory tests follow extras/markers to require exact
 pins across the Windows and Linux dependency closures.
+
+The optional engine profile requires `PyJWT==2.15.1` and `websockets==16.0`.
+These replace the earlier 2.14.0/17.1 core pins: PageIndex's pinned Agents SDK
+requires PyJWT >=2.15 and websockets <17 ([published metadata](https://pypi.org/pypi/openai-agents/0.24.0/json)). The original September environment/CI
+receipts qualify their original pins; they are not evidence for this adjustment.
+Current native/package receipts must identify the exact bundle and interpreter.
+
+## Optional inference profiles
+
+| Package extra | Direct libraries |
+| --- | --- |
+| `tree` | `pageindex==0.4.4` |
+| `rerank` | `sentence-transformers==6.1.0`, `torch==2.14.1` |
+| `visual` | `sentence-transformers==6.1.0`, `torch==2.14.1`, `torchvision==0.29.1`, `transformers[vision]==5.20.2`, `pypdfium2==5.14.0` |
+
+Installing an extra supplies dependencies; it does not enable or implement a
+reserved engine. The runtime catalogue still exposes only implemented GraphMind.
+The base install does not require these libraries. Each profile shares the same
+application identity, reader, MCP, source and job boundaries.
+
+Apply `config/constraints/engines-py313.txt` with the core and Linux constraints
+when resolving any inference extra. Its 39 additional exact pins come from the
+combined native resolver closure, including `openai-agents==0.24.0` and
+`litellm==1.107.0`. This is a resolver input, not a complete hash lock. Use
+[retained native bundles](RELEASE_BUNDLES.md) for repeatable offline installation.
+
+The reviewed x86-64 CPython 3.13 CPU artifacts and publisher hashes are in
+`config/artifacts/cpu-torch-cp313.json`. Supply those downloaded local wheels to
+the collector with `--artifact`; the constraints require their `+cpu` versions.
+Do not let a generic Linux PyPI torch install select CUDA dependencies on a
+CPU-only host. Windows 11 and Server 2025 still need separate native acceptance
+although they share compatible wheel tags. Neither metadata resolution nor an
+upstream import smoke establishes GraphMind engine/service/quality acceptance.
+
+Models remain separate revision-pinned assets with independently verified file
+hashes and terms. Model cards, backbone terms and bundled notices require rights
+review. Use verified local paths with downloads and remote code disabled in
+runtime adapters; no upstream cloud/MCP/server boundary is selected by an extra.
 
 Most transitive packages enter through Chroma, including its HTTP, ONNX Runtime,
 OpenTelemetry, Kubernetes-client, tokenization, validation, and CLI stacks. Neo4j
@@ -99,7 +137,7 @@ alternative, not an implemented dependency.
 | Upstream identity | Google OpenID Connect through Keycloak | Google tokens are never accepted directly by GraphMind. Exact test client and callback remain deployment secrets. |
 | Browser/API service | Starlette `1.6.0` through MCP SDK ASGI app | Stateless GraphMind process; Keycloak introspection checks every request. |
 | MCP SDK | `mcp==2.0.1` | Streamable HTTP and RFC 9728 protected-resource discovery; 2026-07-28 plus 2025-11-25 compatibility. |
-| Token validation | Keycloak RFC 7662 introspection plus `PyJWT==2.14.0` ID-token validation | Exact issuer, resource audience, scope, expiry, verified email, nonce and active account are enforced. |
+| Token validation | Keycloak RFC 7662 introspection plus `PyJWT==2.15.1` ID-token validation | Exact issuer, resource audience, scope, expiry, verified email, nonce and active account are enforced. |
 | Initial MCP client | Claude Code public PKCE client on callback port 8765 | Anonymous dynamic registration is disabled; independent SDK/protocol acceptance remains required. |
 
 The Python group adds 13 resolver entries over the earlier 84-package snapshot:

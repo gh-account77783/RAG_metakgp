@@ -22,8 +22,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_FILES = (
-    "pyproject.toml", "MANIFEST.in", "README.md", "documentation/AUTH_AND_MCP.md", "documentation/DEPENDENCIES.md", "documentation/ARCHITECTURE.md",
+    "pyproject.toml", "MANIFEST.in", "README.md", "documentation/AUTH_AND_MCP.md", "documentation/DEPENDENCIES.md", "documentation/ARCHITECTURE.md", "documentation/RELEASE_BUNDLES.md",
     "config/graphmind.example.toml", "config/.env.example", "config/constraints/core-py313.txt", "config/constraints/linux-py313.txt",
+    "config/constraints/engines-py313.txt", "config/artifacts/cpu-torch-cp313.json",
     "deploy/keycloak/README.md", "deploy/keycloak/graphmind-realm.template.json",
     "deploy/keycloak/graphmind-user-profile.json", "deploy/acceptance/README.md",
     "tools/run_real_acceptance.py", "tools/mcp_acceptance.py",

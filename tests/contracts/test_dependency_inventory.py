@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import importlib.metadata
+import json
 import tomllib
 import unittest
 from pathlib import Path
@@ -16,6 +17,32 @@ CONSTRAINTS_PATH = REPOSITORY / "config" / "constraints" / "core-py313.txt"
 
 
 class DependencyInventoryTests(unittest.TestCase):
+    def test_optional_profiles_use_exact_pins_and_reviewed_cpu_artifacts(self) -> None:
+        project = tomllib.loads((REPOSITORY / "pyproject.toml").read_text(encoding="utf-8"))
+        pins = {}
+        for filename in ("core-py313.txt", "linux-py313.txt", "engines-py313.txt"):
+            for line in (CONSTRAINTS_PATH.parent / filename).read_text(encoding="utf-8").splitlines():
+                if line.strip() and not line.startswith("#"):
+                    requirement = Requirement(line)
+                    name = canonicalize_name(requirement.name)
+                    self.assertNotIn(name, pins)
+                    pins[name] = str(requirement.specifier).removeprefix("==")
+        for extra in ("tree", "rerank", "visual"):
+            for raw in project["project"]["optional-dependencies"][extra]:
+                requirement = Requirement(raw)
+                self.assertTrue(str(requirement.specifier).startswith("=="))
+                self.assertIn(pins[canonicalize_name(requirement.name)], requirement.specifier)
+        artifacts = json.loads((REPOSITORY / "config/artifacts/cpu-torch-cp313.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(artifacts["profiles"]), {"linux-x86_64", "win-amd64"})
+        for profile in artifacts["profiles"].values():
+            self.assertEqual({item["name"] for item in profile}, {"torch", "torchvision"})
+            for item in profile:
+                self.assertEqual(pins[item["name"]], item["version"])
+                self.assertTrue(item["version"].endswith("+cpu"))
+                self.assertRegex(item["sha256"], r"^[a-f0-9]{64}$")
+                self.assertTrue(item["url"].startswith("https://download-r2.pytorch.org/whl/cpu/"))
+                self.assertNotIn("cp313t", item["filename"])
+
     def test_runtime_dependency_closure_is_pinned_including_linux_extra(self) -> None:
         project = tomllib.loads((REPOSITORY / "pyproject.toml").read_text(encoding="utf-8"))
         pins = {}
