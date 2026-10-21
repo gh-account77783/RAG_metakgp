@@ -46,7 +46,8 @@ class DependencyInventoryTests(unittest.TestCase):
     def test_runtime_dependency_closure_is_pinned_including_linux_extra(self) -> None:
         project = tomllib.loads((REPOSITORY / "pyproject.toml").read_text(encoding="utf-8"))
         pins = {}
-        for path in (CONSTRAINTS_PATH, REPOSITORY / "config" / "constraints" / "linux-py313.txt"):
+        for path in (CONSTRAINTS_PATH, CONSTRAINTS_PATH.parent / "linux-py313.txt",
+                     CONSTRAINTS_PATH.parent / "engines-py313.txt"):
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line.strip() and not line.startswith("#"):
                     requirement = Requirement(line)
@@ -93,7 +94,8 @@ class DependencyInventoryTests(unittest.TestCase):
         ]
         constraints = {
             line.strip().casefold()
-            for line in CONSTRAINTS_PATH.read_text(encoding="utf-8").splitlines()
+            for path in (CONSTRAINTS_PATH, CONSTRAINTS_PATH.parent / "engines-py313.txt")
+            for line in path.read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.startswith("#")
         }
         self.assertTrue(all("==" in requirement for requirement in declared))
