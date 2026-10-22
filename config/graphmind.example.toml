@@ -31,6 +31,12 @@ answer_timeout_seconds = 120
 answer_max_retries = 1
 answer_max_context_chars = 24000
 answer_local_context_tokens = 16384 # Ollama local context allocation; hosted providers keep their own setting.
+
+# Use one loopback Chroma server when reader and host CLI run in separate processes.
+# Existing embedded stores are not automatically migrated by changing this setting.
+chroma_mode = "embedded" # Set to "http" for the separate native Chroma server.
+chroma_host = "127.0.0.1"
+chroma_port = 18001
 answer_max_output_tokens = 512
 retrieval_seed_limit = 4
 retrieval_profile = "legacy"

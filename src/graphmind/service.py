@@ -44,6 +44,12 @@ def build_embedding(settings: Settings) -> EmbeddingProvider:
     return HashEmbedding(settings.embedding_dimension)
 
 
+def build_vector_store(settings: Settings, embedding: EmbeddingProvider, *, hybrid=False) -> ChromaVectorStore:
+    return ChromaVectorStore(str(settings.chroma_dir / "hybrid" if hybrid else settings.chroma_dir),
+        settings.collection_name + ("_hybrid_v1" if hybrid else ""), embedding,
+        host=settings.chroma_host if settings.chroma_mode == "http" else None, port=settings.chroma_port)
+
+
 class GraphMindApplication:
     def __init__(
         self,
@@ -84,9 +90,7 @@ class GraphMindApplication:
             self.embedding.inference_lock = self.inference.lock_path
         self.extractor = extractor or IsolatedExtractor(settings)
         self.extractor.cleanup_abandoned()
-        self.vector = vector or ChromaVectorStore(
-            str(settings.chroma_dir), settings.collection_name, self.embedding
-        )
+        self.vector = vector or build_vector_store(settings, self.embedding)
         self.graph = graph or Neo4jGraphStore(
             settings.neo4j_uri,
             settings.neo4j_username,
@@ -96,8 +100,7 @@ class GraphMindApplication:
         self.hybrid = None
         if settings.retrieval_profile == "hybrid" and "graphmind" in settings.enabled_engines:
             self.hybrid = HybridGraphMind(self.indexes, self.sources, self.artifacts,
-                hybrid_vector or ChromaVectorStore(str(settings.chroma_dir / "hybrid"),
-                                                   settings.collection_name + "_hybrid_v1", self.embedding),
+                hybrid_vector or build_vector_store(settings, self.embedding, hybrid=True),
                 self.graph, self.installation_id,
                 reranker or LocalCrossEncoder(Path(settings.reranker_dir), self.inference),
                 max_evidence=settings.retrieval_max_evidence, max_question_chars=settings.max_question_chars,

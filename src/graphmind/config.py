@@ -57,6 +57,9 @@ _ENV_KEYS = {
     "GRAPHMIND_RETRIEVAL_SEED_LIMIT": "retrieval_seed_limit",
     "GRAPHMIND_RETRIEVAL_PROFILE": "retrieval_profile",
     "GRAPHMIND_ENABLED_ENGINES": "enabled_engines",
+    "GRAPHMIND_CHROMA_MODE": "chroma_mode",
+    "GRAPHMIND_CHROMA_HOST": "chroma_host",
+    "GRAPHMIND_CHROMA_PORT": "chroma_port",
     "GRAPHMIND_RERANKER_DIR": "reranker_dir",
     "GRAPHMIND_VISUAL_MODEL_DIR": "visual_model_dir",
     "GRAPHMIND_VISUAL_BUILD_TIMEOUT_SECONDS": "visual_build_timeout_seconds",
@@ -143,6 +146,9 @@ class Settings:
     allowed_import_roots: tuple[Path, ...]
     collection_id: str = "default"
     collection_name: str = "graphmind_chunks"
+    chroma_mode: str = "embedded"
+    chroma_host: str = "127.0.0.1"
+    chroma_port: int = 18001
     max_file_bytes: int = 25 * 1024 * 1024
     chunk_size: int = 1200
     chunk_overlap: int = 120
@@ -284,6 +290,7 @@ class Settings:
         values["enabled_engines"] = tuple(sorted(set(engines)))
         for key in (
             "max_file_bytes",
+            "chroma_port",
             "chunk_size",
             "chunk_overlap",
             "embedding_dimension",
@@ -346,6 +353,10 @@ class Settings:
     ) -> None:
         if self.retrieval_profile not in {"legacy", "hybrid"}:
             raise ConfigurationError("retrieval_profile must be legacy or hybrid")
+        if self.chroma_mode not in {"embedded", "http"}:
+            raise ConfigurationError("chroma_mode must be embedded or http")
+        if self.chroma_host not in {"127.0.0.1", "localhost", "::1"} or not 1 <= self.chroma_port <= 65535:
+            raise ConfigurationError("Chroma requires a loopback host and a port between 1 and 65535")
         if (not self.enabled_engines or set(self.enabled_engines) - {"graphmind", "tree_navigation", "multimodal"}):
             raise ConfigurationError("enabled_engines contains no supported selection")
         if self.retrieval_profile == "hybrid" and "graphmind" in self.enabled_engines and not self.reranker_dir:
@@ -543,6 +554,9 @@ class Settings:
             "allowed_import_roots": [str(path) for path in self.allowed_import_roots],
             "collection_id": self.collection_id,
             "collection_name": self.collection_name,
+            "chroma_mode": self.chroma_mode,
+            "chroma_host": self.chroma_host,
+            "chroma_port": self.chroma_port,
             "retrieval_profile": self.retrieval_profile,
             "enabled_engines": list(self.enabled_engines),
             "reranker_dir": self.reranker_dir,

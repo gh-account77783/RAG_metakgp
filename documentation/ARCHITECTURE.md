@@ -132,6 +132,23 @@ indexing the selected profile's sources; missing indexes fail clearly. The defau
 remains `legacy` pending measured quality and release acceptance. These mechanisms
 do not establish an accuracy gain or native service/release qualification.
 
+## Chroma persistence ownership
+
+For a reader and host CLI running in separate processes, configure
+`chroma_mode="http"`, `chroma_host="127.0.0.1"`, and `chroma_port=18001`.
+Run the retained Chroma 1.5.9 server with
+`chroma run --path "<private-chroma-directory>" --host 127.0.0.1 --port 18001`.
+That server alone owns vector persistence. Legacy and hybrid adapters share its
+loopback endpoint and use separate collection names. No public Chroma listener
+or hosted-store fallback is enabled.
+
+The thin adapter retains Chroma's HTTP protocol and caps every request at
+30 seconds, including client initialization. Chroma 1.5.9 otherwise creates its
+HTTP session without a timeout. A missing server produces an explicit dependency
+failure. Embedded mode remains the compatibility default for existing stores and
+single-process diagnostics; changing the mode never copies or migrates an old
+index. Build a separate index and verify it before a deliberate cutover.
+
 ## Vectorless PDF navigation
 
 Enable `tree_navigation` alone or alongside GraphMind with `enabled_engines`.

@@ -81,10 +81,12 @@ class MemoryVectorStore:
 
 
 class ChromaVectorStore:
-    def __init__(self, path: str, collection_name: str, embedding: EmbeddingProvider) -> None:
+    def __init__(self, path: str, collection_name: str, embedding: EmbeddingProvider, *,
+                 host: str | None = None, port: int = 18001) -> None:
         self.path = path
         self.collection_name = collection_name
         self.embedding = embedding
+        self.host, self.port = host, port
         self._client = None
         self._collection = None
 
@@ -99,7 +101,11 @@ class ChromaVectorStore:
             import chromadb
             from chromadb.errors import NotFoundError
 
-            self._client = chromadb.PersistentClient(path=self.path)
+            if self.host is None:
+                self._client = chromadb.PersistentClient(path=self.path)
+            else:
+                from .chroma_http import ChromaHTTPClient
+                self._client = ChromaHTTPClient(self.host, self.port)
             expected_fingerprint = self.embedding.fingerprint
             try:
                 collection = self._client.get_collection(name=self.collection_name)
@@ -120,8 +126,12 @@ class ChromaVectorStore:
             self._collection = collection
             return self._collection
         except GraphMindError:
+            if self.host is not None:
+                self.close()
             raise
         except Exception as exc:
+            if self.host is not None:
+                self.close()
             raise DependencyUnavailableError("Chroma is unavailable") from exc
 
     def readiness(self) -> AdapterStatus:
