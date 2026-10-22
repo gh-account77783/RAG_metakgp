@@ -1,6 +1,6 @@
 # Dependency Inventory
 
-Status reconciled: 2026-10-21 (core and optional profiles)
+Status reconciled: 2026-10-22 (core and optional profiles)
 
 This inventory separates the installable GraphMind package from development-only
 legacy code and external model or service components. It records dependency facts;
@@ -21,6 +21,7 @@ build/test prerequisite, not a production application runtime dependency.
 
 | Purpose | Direct dependency |
 | --- | --- |
+| Application HTTPS trust bundle | `certifi==2026.10.19` |
 | Vector store | `chromadb==1.5.9` |
 | Graph client | `neo4j==6.3.0` |
 | PDF text extraction | `pypdf==6.18.0` |
@@ -53,6 +54,17 @@ These replace the earlier 2.14.0/17.1 core pins: PageIndex's pinned Agents SDK
 requires PyJWT >=2.15 and websockets <17 ([published metadata](https://pypi.org/pypi/openai-agents/0.24.0/json)). The original September environment/CI
 receipts qualify their original pins; they are not evidence for this adjustment.
 Current native/package receipts must identify the exact bundle and interpreter.
+
+The core constraint uses `certifi==2026.10.19` for the published CA trust update.
+Python's [3.13.17 security release](https://www.python.org/downloads/release/python-31317/)
+also updates its bundled pip/CA certificates for the emSign incident. Retained
+older bundles qualify their recorded bytes; fresh candidates must qualify the
+updated CA wheel and interpreter separately. Do not modify certificate bundles
+manually or disable TLS verification to make an installation succeed.
+Model and identity urllib clients share a verified SSL context loaded explicitly
+from this unmodified public CA bundle, with hostname checking enabled. Application
+HTTPS does not merge per-host trust stores; loopback HTTP remains available for
+the private same-host development/service bindings.
 
 ## Optional inference profiles
 

@@ -9,6 +9,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from .tls import verified_context
+
 
 class HttpClientError(Exception):
     """Internal transport error that never includes response bodies or credentials."""
@@ -59,7 +61,7 @@ class UrllibJsonTransport:
         body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
         request = urllib.request.Request(url, data=body, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with urllib.request.urlopen(request, timeout=timeout, context=verified_context()) as response:
                 raw = response.read()
         except urllib.error.HTTPError as exc:
             raise HttpStatusError(int(exc.code)) from exc

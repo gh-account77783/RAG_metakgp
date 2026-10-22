@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 from .config import Settings
 from .locking import exclusive_file_lock
+from .tls import verified_context
 from .errors import (
     AccountNotFoundError,
     AccountStateError,
@@ -119,7 +120,7 @@ class UrllibIdentityTransport:
             request_headers.setdefault("Content-Type", "application/json")
         request = urllib.request.Request(url, data=body, method=method, headers=request_headers)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with urllib.request.urlopen(request, timeout=timeout, context=verified_context()) as response:
                 raw = response.read(2 * 1024 * 1024 + 1)
                 if len(raw) > 2 * 1024 * 1024:
                     raise IdentityResponseError("Identity response exceeds the allowed size")

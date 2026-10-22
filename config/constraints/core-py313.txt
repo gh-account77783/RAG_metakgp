@@ -1,6 +1,7 @@
 # Resolver snapshot for graphmind-rag-mcp 0.1.0 with the test extra.
 # Generated 2026-09-16 using CPython 3.13 and pip 26.2.1 on Windows x86-64.
 # PyJWT/websockets reconciled with the optional profile on 2026-10-21.
+# Certifi trust update reconciled on 2026-10-22 (2026.10.19).
 # This records resolved versions; Ubuntu and both native Windows targets still require clean installs.
 PyJWT==2.15.1
 PyPika==0.51.1
@@ -15,7 +16,7 @@ anyio==4.15.1
 attrs==26.1.0
 bcrypt==5.0.0
 build==1.6.0
-certifi==2026.7.22
+certifi==2026.10.19
 cffi==2.1.1
 charset-normalizer==3.5.1
 chromadb==1.5.9

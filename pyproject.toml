@@ -9,6 +9,7 @@ description = "Self-hosted document RAG foundation with vector and document-grap
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
+  "certifi==2026.10.19",
   "chromadb==1.5.9",
   "mcp==2.0.1",
   "neo4j==6.3.0",
