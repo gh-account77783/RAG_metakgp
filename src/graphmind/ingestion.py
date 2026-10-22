@@ -231,15 +231,20 @@ class IngestionService:
         if self.failure_injector:
             self.failure_injector(point)
 
-    def _read_source(self, source: Path) -> tuple[Path, bytes, str]:
+    def resolve_import_path(self, source: Path, *, directory: bool = False) -> Path:
+        """Share the host import-root policy with file/folder administration."""
         try:
             resolved = source.expanduser().resolve(strict=True)
         except (OSError, RuntimeError) as exc:
             raise PathValidationError(f"Input file cannot be resolved: {source}") from exc
-        if source.is_symlink() or not resolved.is_file():
-            raise PathValidationError("Input must be a regular, non-symlink file")
+        if source.is_symlink() or source.is_junction() or not (resolved.is_dir() if directory else resolved.is_file()):
+            raise PathValidationError("Input must be a regular, non-link " + ("directory" if directory else "file"))
         if not _within(resolved, self.settings.allowed_import_roots):
             raise PathValidationError("Input file is outside the configured import roots")
+        return resolved
+
+    def _read_source(self, source: Path) -> tuple[Path, bytes, str]:
+        resolved = self.resolve_import_path(source)
         suffix = resolved.suffix.casefold()
         if suffix not in SUPPORTED_MEDIA_TYPES:
             raise UnsupportedFileError("Supported formats are PDF, DOCX, TXT, Markdown, and CSV")

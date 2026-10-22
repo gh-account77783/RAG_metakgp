@@ -81,9 +81,30 @@ A targeted job cannot overtake an older queued/running job for the same
 document. It returns `job_not_ready` until that earlier work is completed, so a
 later worker cannot republish an older pending version after the replacement.
 
+For host-local folder ingestion and an interactive operator menu:
+
+```bash
+graphmind --config reader.toml import-folder /approved/documents --recursive --max-files 100
+graphmind --config reader.toml wizard
+```
+
+Folder import selects supported files inside the configured roots, skips links,
+hidden subdirectories and application runtime data, and checks the file limit
+before submitting any work. Each file reports its actual job and engine-index
+states; a failed file keeps its error and does not hide other file results.
+Use `--engines tree_navigation` for an explicit compatible selection, or omit it
+to use configured engines compatible with each format. `--enqueue-only` leaves
+execution to the existing worker. Importing a changed file through the same path
+uses the existing replacement/version rules. The menu reuses configuration,
+dependency checks, import, status, failed-job retry and document deletion.
+
+When a reader and host CLI run concurrently, configure the separate loopback
+Chroma server as described in [ARCHITECTURE.md](documentation/ARCHITECTURE.md#chroma-persistence-ownership).
+These host commands do not expose an upload or administration route to readers.
+
 The deterministic hash embedding remains an offline diagnostic adapter only. The production candidate uses `BAAI/bge-m3` through same-host Ollama and fingerprints its full digest, reported precision and 1024-dimensional output. Changing that identity requires explicit reindexing. Bounded real identity/client functionality is verified; full quality, installers and release qualification remain later gates.
 
-The selected local `gemma4:e2b` preset requests `think: false` for its bounded
+The local `gemma4:e2b` and `gemma4:e4b` presets request `think: false` for their bounded
 structured answer: otherwise reasoning can exhaust the output-token limit before
 any final JSON arrives. Reasoning traces are not treated as answers or citations.
 Other model and hosted thinking controls are unchanged. Configure CPU request

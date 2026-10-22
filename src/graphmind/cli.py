@@ -14,9 +14,16 @@ from .rag.components.contracts import Job, Outcome, QueryContext
 from .errors import ConfigurationError, GraphMindError, JobNotFoundError
 from .evaluation import EvaluationRunner, FrozenEvaluationDataset
 from .providers import ExtractiveProvider
+from .host_admin import complete_submission, folder_sources, import_sources, index_status, selected_engines, wizard
 from .service import GraphMindApplication, build_embedding
 from .rag.components.vector_store import MemoryVectorStore
 from .rag.graphmind.reference_graph import MemoryGraphStore
+
+
+def _import_options(parser):
+    parser.add_argument("--enqueue-only", action="store_true")
+    parser.add_argument("--engines", help="Comma-separated configured engine identifiers")
+    parser.add_argument("--csv-delimiter", choices=("auto", "comma", "semicolon", "tab", "pipe"))
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -39,21 +46,20 @@ def _parser() -> argparse.ArgumentParser:
         "import", help="Import one PDF, DOCX, TXT, Markdown, or CSV document"
     )
     import_parser.add_argument("path", type=Path)
-    import_parser.add_argument("--enqueue-only", action="store_true")
-    import_parser.add_argument("--engines", help="Comma-separated configured engine identifiers")
-    import_parser.add_argument(
-        "--csv-delimiter", choices=("auto", "comma", "semicolon", "tab", "pipe")
-    )
+    _import_options(import_parser)
+
+    folder_parser = subcommands.add_parser("import-folder", help="Import a bounded folder of supported documents")
+    folder_parser.add_argument("path", type=Path)
+    folder_parser.add_argument("--recursive", action="store_true")
+    folder_parser.add_argument("--max-files", type=int, default=100)
+    _import_options(folder_parser)
+    subcommands.add_parser("wizard", help="Open the host-only configuration/import/status/job menu")
 
     reindex_parser = subcommands.add_parser(
         "reindex", help="Create and publish a version for the current parser/index configuration"
     )
     reindex_parser.add_argument("path", type=Path)
-    reindex_parser.add_argument("--enqueue-only", action="store_true")
-    reindex_parser.add_argument("--engines", help="Comma-separated configured engine identifiers")
-    reindex_parser.add_argument(
-        "--csv-delimiter", choices=("auto", "comma", "semicolon", "tab", "pipe")
-    )
+    _import_options(reindex_parser)
 
     delete_parser = subcommands.add_parser(
         "delete", help="Hide a document immediately and queue physical cleanup"
@@ -162,12 +168,7 @@ def _status(app: GraphMindApplication) -> dict[str, object]:
                 "display_name": item.display_name,
                 "active_version_id": item.active_version_id,
                 "deleted": item.deleted_at is not None,
-                "indexes": [{"index_id": index.index_id, "engine_id": index.recipe.engine_id,
-                             "source_version_id": index.source_version_id, "status": index.status.value,
-                             "failure_code": index.failure_code,
-                             "active": bool((head := app.indexes.ready(item.document_id, index.recipe.engine_id))
-                                            and head.index_id == index.index_id)}
-                            for index in app.indexes.for_document(item.document_id)],
+                "indexes": index_status(app, item.document_id),
             }
             for item in app.metadata.list_documents()
         ],
@@ -182,15 +183,7 @@ def _report_submission(
     enqueue_only: bool,
     warnings: tuple[str, ...] | None = None,
 ) -> None:
-    failure = None
-    if not enqueue_only:
-        try:
-            app.jobs.run_job(job.job_id)
-        except GraphMindError as exc:
-            failure = exc
-    current = app.metadata.job(job.job_id)
-    if current is None:
-        raise JobNotFoundError("The submitted job does not exist")
+    current, failure = complete_submission(app, job, enqueue_only=enqueue_only)
     output = _status(app)
     output["submitted_job"] = _job_status(current)
     if warnings is not None:
@@ -291,11 +284,18 @@ def main(argv: list[str] | None = None) -> None:
                 if not all(item["available"] for item in statuses):
                     raise SystemExit(2)
             elif args.command in {"import", "reindex"}:
-                options = ({"engines": tuple(value.strip() for value in args.engines.split(",") if value.strip())}
-                           if args.engines is not None else {})
-                submission = app.ingestion.prepare_import(args.path, **options)
+                submission = app.ingestion.prepare_import(args.path, engines=selected_engines(args.engines))
                 _report_submission(app, submission.job, enqueue_only=args.enqueue_only,
                                    warnings=submission.warnings)
+            elif args.command == "import-folder":
+                paths = folder_sources(app, args.path, recursive=args.recursive, max_files=args.max_files)
+                output = import_sources(app, paths, engines=selected_engines(args.engines),
+                                        enqueue_only=args.enqueue_only, job_status=_job_status)
+                print(json.dumps(output, indent=2, ensure_ascii=False))
+                if output["failed_files"]:
+                    raise SystemExit(2)
+            elif args.command == "wizard":
+                wizard(app, status=_status, job_status=_job_status)
             elif args.command == "delete":
                 submission = app.ingestion.prepare_delete(args.document_id)
                 _report_submission(app, submission.job, enqueue_only=args.enqueue_only)
