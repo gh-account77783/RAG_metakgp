@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
+import signal
 import sys
+import threading
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -24,6 +27,28 @@ def _import_options(parser):
     parser.add_argument("--enqueue-only", action="store_true")
     parser.add_argument("--engines", help="Comma-separated configured engine identifiers")
     parser.add_argument("--csv-delimiter", choices=("auto", "comma", "semicolon", "tab", "pipe"))
+
+
+def _poll_seconds(value):
+    try:
+        seconds = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Polling must be between 1 and 60 seconds") from exc
+    if not math.isfinite(seconds) or not 1 <= seconds <= 60:
+        raise argparse.ArgumentTypeError("Polling must be between 1 and 60 seconds")
+    return seconds
+
+
+def _run_worker(executor, poll_seconds):
+    stop = threading.Event()
+    previous = {}
+    try:
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous[signum] = signal.signal(signum, lambda *_: stop.set())
+        executor.run_forever(stop, poll_seconds=poll_seconds)
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -71,6 +96,8 @@ def _parser() -> argparse.ArgumentParser:
     retry_parser.add_argument("job_id")
 
     subcommands.add_parser("worker-once", help="Run at most one queued ingestion job")
+    worker = subcommands.add_parser("worker", help="Run the existing durable queue until stopped")
+    worker.add_argument("--poll-seconds", type=_poll_seconds, default=5.0)
     subcommands.add_parser("status", help="List documents and durable jobs")
     subcommands.add_parser(
         "embedding-status", help="Compare configured and active index embedding fingerprints"
@@ -314,6 +341,8 @@ def main(argv: list[str] | None = None) -> None:
                 app.jobs.reconcile()
                 job = app.jobs.run_once()
                 print(json.dumps({"processed_job": job.job_id if job else None}, indent=2))
+            elif args.command == "worker":
+                _run_worker(app.jobs, args.poll_seconds)
             elif args.command == "status":
                 print(json.dumps(_status(app), indent=2))
             elif args.command == "embedding-status":

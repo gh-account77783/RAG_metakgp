@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import socket
 import threading
 import uuid
@@ -46,6 +47,27 @@ class DurableJobExecutor:
             if not acquired:
                 raise JobLeaseError("Another ingestion process is still running")
             return self._run_once_locked()
+
+    def run_forever(self, stop: threading.Event, *, poll_seconds: float = 5.0) -> None:
+        """Drain the existing queue; finish the current fenced job on shutdown."""
+        if not math.isfinite(poll_seconds) or not 1 <= poll_seconds <= 60:
+            raise ValueError("Worker polling must be between 1 and 60 seconds")
+        while not stop.is_set():
+            try:
+                # A crashed predecessor's lease may expire after startup.
+                # Reuse normal reconciliation instead of stranding its job.
+                self.reconcile()
+                if stop.is_set():
+                    break
+                completed = self.run_once()
+            except Exception as exc:
+                # Keep document bodies, paths and external error details out of
+                # service logs. run_once records the durable job failure.
+                logger.warning("Worker attempt failed (%s)",
+                               exc.code if isinstance(exc, GraphMindError) else type(exc).__name__)
+                completed = None
+            if completed is None:
+                stop.wait(poll_seconds)
 
     def run_job(self, job_id: str) -> Job:
         """Complete one explicit submission; never drain another job's work.

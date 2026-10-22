@@ -102,6 +102,14 @@ When a reader and host CLI run concurrently, configure the separate loopback
 Chroma server as described in [ARCHITECTURE.md](documentation/ARCHITECTURE.md#chroma-persistence-ownership).
 These host commands do not expose an upload or administration route to readers.
 
+Run `graphmind --config reader.toml worker --poll-seconds 5` to process queued
+ingestion continuously through the existing single-writer executor. SIGINT or
+SIGTERM stops after the current job; failed jobs retain their status and require
+an explicit retry. The worker reconciles interrupted jobs and backs off while
+idle or when dependencies fail. Configure a service stop timeout long enough
+for the bounded parser/model job to finish. Use the same private data directory
+and loopback Chroma server as the reader; the worker needs host import access.
+
 `min_free_disk_bytes` (environment: `GRAPHMIND_MIN_FREE_DISK_BYTES`) keeps a
 512 MiB default reserve on the local application data volume. Import admission
 and index jobs check it; low space reports `storage_capacity_unavailable` and
