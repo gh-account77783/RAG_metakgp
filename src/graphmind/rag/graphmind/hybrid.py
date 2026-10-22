@@ -43,14 +43,14 @@ class HybridGraphMind:
                              else {"implementation": type(self.reranker).__name__}),
                 "candidate_limit": 50, "rrf_k": 60, "min_relevance": self.min_relevance,
                 "reference_hops": 1, "per_source_evidence_limit": 3,
-                "query_recipe": "source-title-reference-binding-v4"}
+                "query_recipe": "source-title-reference-binding-v5"}
 
     @staticmethod
     def _seed_query(query: str) -> str:
         # A question about a referenced person's attributes may be a poor
         # match for the originating page, which only identifies that person.
         # Keep one literal origin clause; target ranking still uses the full question.
-        if (not re.search(r"\b(?:links?|linked|instructor|professor|teacher)\b", query, re.I)
+        if (not re.search(r"\b(?:links?|linked|instructor|professor|teacher|society)\b", query, re.I)
                 or re.search(r"\b(?:compare|comparison|both|between)\b", query, re.I)):
             return query
         relation = re.match(r"(.*?\b(?:page|document)\b\s+(?:links?|lists?|names?|identifies?|refers?)\b[^.!?]*\.?)",
@@ -59,7 +59,22 @@ class HybridGraphMind:
             return relation[1]
         match = re.match(r"(.*?\b(?:page|document)\b)(?=[,.])",
                          query, re.I)
-        return match[1] if match else query
+        if match:
+            return match[1]
+        # Some questions put the relationship before the literal source title:
+        # "the instructor listed on the Orion page". Keep those original words,
+        # without the target's requested attribute diluting origin retrieval.
+        role = re.compile(r"\b(?:(?:first|second|third|last)\s+)?(?:instructor|professor|teacher|society)\b", re.I)
+        origins = []
+        for pattern in (r"\b(?:on|from)\s+(?:the\s+)?([^?.!,]{1,200}?)\s+(page|document|guide)\b",
+                        r"\bin\s+(?:the\s+)?([^?.!,]{1,200}?)\s+(guide)\b"):
+            for origin in re.finditer(pattern, query, re.I):
+                prefix = query[:origin.start()]
+                relationship = role.search(prefix)
+                if relationship:
+                    origins.append((origin.start(),
+                        f"{origin[1]} {origin[2]} {prefix[relationship.start():].strip()}"))
+        return min(origins, key=lambda item: item[0])[1] if origins else query
 
     @staticmethod
     def _passage_key(item):

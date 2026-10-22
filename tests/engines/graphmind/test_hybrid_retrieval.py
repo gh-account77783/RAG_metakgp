@@ -41,6 +41,26 @@ class HybridPrimitiveTests(unittest.TestCase):
         for question in ("What is a page?", "Compare both instructors between the Orion page and Vega page."):
             self.assertEqual(HybridGraphMind._seed_query(question), question)
 
+    def test_origin_query_preserves_the_role_before_a_literal_source_title(self):
+        from graphmind.rag.graphmind.hybrid import HybridGraphMind
+        examples = {
+            "In what year did the first instructor listed on the Orion Systems page join?":
+                "Orion Systems page first instructor listed",
+            "When did the professor linked from the Vega document join?":
+                "Vega document professor linked",
+            "Which society is linked under Activities in the Newcomer's guide, and name an activity on that society's page?":
+                "Newcomer's guide society is linked under Activities",
+        }
+        for question, expected in examples.items():
+            with self.subTest(question=question):
+                self.assertEqual(HybridGraphMind._seed_query(question), expected)
+        for question in ("When did the Orion instructor join?",
+                         "Who teaches on the Orion page?",
+                         "What does the society do?",
+                         "Compare the first instructor on the Orion page with the professor from the Vega document."):
+            with self.subTest(question=question):
+                self.assertEqual(HybridGraphMind._seed_query(question), question)
+
     def test_fusion_uses_ranks_without_counting_duplicates_twice(self):
         self.assertEqual(reciprocal_rank_fusion(["a", "b"], ["b", "c"]), ["b", "a", "c"])
         self.assertEqual(reciprocal_rank_fusion(["a", "a"], ["b"]), ["a", "b"])
@@ -111,15 +131,23 @@ class HybridLifecycleTests(unittest.TestCase):
                 run_submission(app, course)
                 run_submission(app, faculty)
                 class Reranker:
+                    seed_questions = []
+                    target_questions = []
                     def score(self, question, passages):
+                        self.seed_questions.append(question)
                         return [0.99 if "Source URL:" in item else 0.8 if "Instructor:" in item
                                 else 0.001 for item in passages]
                     def score_pairs(self, pairs):
+                        self.target_questions.extend(question for question, _ in pairs)
                         return [0.9 if "Year joined:" in item else 0.001 for _, item in pairs]
                 app.hybrid.reranker = Reranker()
-                evidence = app.retrieval.retrieve("The OR123 page links to its instructor. When did she join?")
+                question = "When did the first instructor listed on the OR123 page join?"
+                evidence = app.retrieval.retrieve(question)
                 self.assertTrue(any("Instructor:" in item.excerpt for item in evidence))
                 self.assertTrue(any("Year joined:" in item.excerpt for item in evidence))
+                self.assertEqual(app.hybrid.reranker.seed_questions, ["OR123 page first instructor listed"])
+                self.assertTrue(app.hybrid.reranker.target_questions)
+                self.assertTrue(all(question in item for item in app.hybrid.reranker.target_questions))
 
     def test_reference_ranking_binds_original_target_title_and_keeps_both_sources(self):
         with tempfile.TemporaryDirectory() as temporary:
