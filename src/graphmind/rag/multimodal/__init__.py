@@ -1,1 +1,1 @@
-"""Reserved visual RAG namespace; this engine is not implemented."""
+"""Bounded local PDF-page visual retrieval under the shared source authority."""

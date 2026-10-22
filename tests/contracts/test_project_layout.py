@@ -47,12 +47,15 @@ class ProjectLayoutTests(unittest.TestCase):
         self.assertEqual(AnswerService.__module__, "graphmind.rag.components.pipeline")
         self.assertEqual(RetrievalService.__module__, "graphmind.rag.graphmind.engine")
 
-    def test_catalogue_does_not_claim_planned_engines_are_implemented(self):
+    def test_catalogue_records_implemented_engines_without_enabling_them(self):
         self.assertEqual([spec.engine_id for spec in ENGINE_CATALOG],
                          ["graphmind", "tree_navigation", "multimodal"])
         self.assertTrue(engine_spec("graphmind").implemented)
         self.assertTrue(engine_spec("tree_navigation").implemented)
-        self.assertFalse(engine_spec("multimodal").implemented)
+        self.assertTrue(engine_spec("multimodal").implemented)
+        from graphmind.config import Settings
+        self.assertEqual(Settings(data_dir=Path("unused"),
+                                  allowed_import_roots=(Path("."),)).enabled_engines, ("graphmind",))
         with self.assertRaises(FrozenInstanceError):
             engine_spec("graphmind").implemented = False
         with self.assertRaises(ConfigurationError):

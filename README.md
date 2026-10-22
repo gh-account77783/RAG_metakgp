@@ -19,9 +19,10 @@ full frozen evaluation and manual factual/citation review remain open. Guided
 installation, full native application services/reboot, resource qualification,
 backup/restore, consolidated security/edge cases and release rights remain
 P7/P8. Windows feasibility did not qualify the complete model/RAG stack.
-The current CLI/MCP catalogue implements GraphMind and bounded PDF tree
-navigation. The browser form currently uses GraphMind. The visual namespace
-remains unavailable.
+The shared browser/MCP catalogue lists GraphMind, bounded PDF tree navigation
+and local PDF-page visual retrieval. Engines must be explicitly configured and
+indexed before readers can select them. These implementation facts do not
+establish full answer-quality or native release qualification.
 
 The original MetaKGP crawler and reasoning code remains in the repository as a legacy test prototype. It is not part of the generic package path and is not intended for the final user distribution.
 
@@ -226,7 +227,7 @@ product pipeline or bundled user data.
 │   ├── rag/
 │   │   ├── graphmind/           # Current vector + document-reference engine
 │   │   ├── tree_navigation/     # Bounded PageIndex/PDF navigation
-│   │   ├── multimodal/          # Reserved; not implemented/selectable
+│   │   ├── multimodal/          # Local PDF-page visual retrieval
 │   │   └── components/          # Shared contracts/pipeline/citations/embeddings/vector store
 │   └── web/                    # Resource loader; generated static files only in builds
 ├── assets/web/                  # Single editable CSS/JS source outside src

@@ -33,8 +33,8 @@ scanner/build metadata remain where their tools discover them.
 
 `rag/tree_navigation/` implements bounded text-bearing PDF navigation through
 the pinned local PageIndex adapter. `rag/multimodal/` contains the local PDF-page
-adapter; its reader catalogue remains disabled pending qualification. Engines
-must be explicitly enabled; catalogue membership does not
+adapter and is listed as implemented in the shared reader catalogue. Engines
+must be explicitly enabled and have a ready index; catalogue membership does not
 download models or enable a runtime adapter.
 
 ## Dependency direction and compatibility
