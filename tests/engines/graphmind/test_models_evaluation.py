@@ -218,6 +218,41 @@ class OllamaEmbeddingTests(unittest.TestCase):
 
 
 class OllamaProviderTests(unittest.TestCase):
+    def test_request_aliases_translate_only_included_citations_in_selected_order(self):
+        evidence = [Evidence('opaque-' + str(i) * 64, 'doc', 'version', 'Owned', 'line 1',
+                             'Owned fact.', 'hybrid', 1) for i in range(2)]
+        transport = FakeTransport([{'message': {'content': json.dumps({
+            'outcome': 'answer', 'answer': 'Owned facts.', 'citation_ids': ['E2', 'E1']})}}])
+        provider = OllamaProvider('http://127.0.0.1:11434', '', 'fixture', mode='local', transport=transport)
+        answer = provider.answer('Question?', evidence)
+        self.assertEqual(answer.citation_ids, (evidence[1].citation_id, evidence[0].citation_id))
+        payload = transport.calls[0]['payload']
+        sent = json.loads(payload['messages'][1]['content'])['evidence']
+        self.assertEqual([item['citation_id'] for item in sent], ['E1', 'E2'])
+        self.assertNotIn(evidence[0].citation_id, json.dumps(payload))
+        self.assertEqual(payload['format']['properties']['citation_ids']['items']['enum'], ['E1', 'E2'])
+
+    def test_omitted_unknown_duplicate_or_empty_answer_citations_fail_without_retry(self):
+        evidence = [Evidence('first', 'doc', 'v', 'Owned', 'line 1', 'x' * 1000, 'hybrid', 1),
+                    Evidence('omitted', 'doc', 'v', 'Owned', 'line 2', 'Other fact', 'hybrid', 1)]
+        for citations in (['E2'], ['omitted'], ['first'], ['E1', 'E1'], []):
+            transport = FakeTransport([{'message': {'content': json.dumps({
+                'outcome': 'answer', 'answer': 'Fact', 'citation_ids': citations})}}])
+            provider = OllamaProvider('http://127.0.0.1:11434', '', 'fixture', mode='local',
+                max_context_chars=1000, transport=transport)
+            with self.subTest(citations=citations), self.assertRaises(ProviderResponseError):
+                provider.answer('Question?', evidence)
+            self.assertEqual(provider.call_count, 1)
+            self.assertEqual(transport.calls[0]['payload']['format']['properties']['citation_ids']['items']['enum'], ['E1'])
+
+    def test_alias_protocol_preserves_uncited_abstention(self):
+        transport = FakeTransport([{'message': {'content': json.dumps({
+            'outcome': 'insufficient_evidence', 'answer': 'Not supported.', 'citation_ids': []})}}])
+        answer = OllamaProvider('http://127.0.0.1:11434', '', 'fixture', mode='local',
+            transport=transport).answer('Question?', self.evidence())
+        self.assertEqual(answer.outcome, Outcome.INSUFFICIENT_EVIDENCE)
+        self.assertEqual(answer.citation_ids, ())
+
     @staticmethod
     def evidence():
         return [
@@ -240,7 +275,7 @@ class OllamaProviderTests(unittest.TestCase):
                     {
                         "outcome": "answer",
                         "answer": "CERULEAN",
-                        "citation_ids": ["citation"],
+                        "citation_ids": ["E1"],
                     }
                 )
             }
@@ -308,7 +343,7 @@ class OllamaProviderTests(unittest.TestCase):
     def test_small_gemma_presets_bound_thinking_without_changing_other_models(self):
         for model in ("gemma4:e2b", "gemma4:e4b"):
             transport = FakeTransport([{"message": {"content":
-                '{"outcome":"answer","answer":"CERULEAN","citation_ids":["citation"]}'}}])
+                '{"outcome":"answer","answer":"CERULEAN","citation_ids":["E1"]}'}}])
             provider = OllamaProvider("http://127.0.0.1:11434", "", model,
                 mode="local", max_retries=0, transport=transport)
             self.assertEqual(provider.answer("What is the code?", self.evidence()).answer, "CERULEAN")
@@ -317,7 +352,7 @@ class OllamaProviderTests(unittest.TestCase):
 
     def test_nonpreset_local_model_keeps_native_thinking_controls(self):
         transport = FakeTransport([{"message": {"content":
-            '{"outcome":"answer","answer":"CERULEAN","citation_ids":["citation"]}'}}])
+            '{"outcome":"answer","answer":"CERULEAN","citation_ids":["E1"]}'}}])
         provider = OllamaProvider("http://127.0.0.1:11434", "", "other-local-model",
                                   mode="local", max_retries=0, transport=transport)
         self.assertEqual(provider.answer("What is the code?", self.evidence()).answer, "CERULEAN")
@@ -326,7 +361,7 @@ class OllamaProviderTests(unittest.TestCase):
     def test_retry_and_typed_http_failures(self):
         success = {
             "message": {
-                "content": '{"outcome":"answer","answer":"x","citation_ids":["citation"]}'
+                "content": '{"outcome":"answer","answer":"x","citation_ids":["E1"]}'
             }
         }
         transport = FakeTransport([HttpStatusError(429), success])
@@ -371,7 +406,7 @@ class OllamaProviderTests(unittest.TestCase):
     def test_context_is_bounded_and_failure_calls_are_reported(self):
         payload = {
             "message": {
-                "content": '{"outcome":"answer","answer":"x","citation_ids":["citation"]}'
+                "content": '{"outcome":"answer","answer":"x","citation_ids":["E1"]}'
             }
         }
         transport = FakeTransport([payload])

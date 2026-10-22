@@ -117,7 +117,7 @@ class VisionProviderTests(unittest.TestCase):
                 if url.endswith("/show"):
                     return {"capabilities": ["vision"] if self.vision else []}
                 return {"message": {"content": json.dumps({"outcome": "answer", "answer": "Blue.",
-                                                            "citation_ids": ["page:v:1"]})}}
+                                                            "citation_ids": ["E1"]})}}
         transport = Transport()
         item = Evidence("page:v:1", "doc", "v", "Owned.pdf", "page 1", "Panel One", "visual", 1,
                         page_number=1, image_base64="cG5n")
@@ -125,6 +125,9 @@ class VisionProviderTests(unittest.TestCase):
             ExtractiveProvider().answer("Panel One?", [item])
         provider = OllamaProvider("http://127.0.0.1:21434", "", "fixture", mode="local", transport=transport)
         answer = provider.answer("Which color?", [item])
+        self.assertEqual(answer.citation_ids, ("page:v:1",))
+        sent = json.loads(transport.calls[-1][1]["messages"][1]["content"])["evidence"]
+        self.assertEqual((sent[0]["citation_id"], sent[0]["image_number"]), ("E1", "1"))
         self.assertEqual(transport.calls[-1][1]["messages"][1]["images"], ["cG5n"])
         serialized = QueryResult(Outcome.ANSWER, answer.answer, (item,), "req").as_dict()
         self.assertNotIn("cG5n", json.dumps(serialized))

@@ -224,3 +224,10 @@ All engines reuse the existing identity, source, job, provider and reader
 authorities. Ingestion remains host-only. GraphMind factual quality, complete
 native services and final security/licensing/release qualification are separate
 from offline contract tests and individual model probes.
+
+The answer provider sends request-local citation aliases (`E1`, `E2`, ...) for
+only the context that fits its budget. The local response schema enumerates
+those aliases; both local and hosted responses are validated and translated
+back to the original evidence IDs. Unknown, omitted or duplicate citations fail
+without a model retry. This establishes context membership, not factual support;
+the shared answer service still checks all source versions before delivery.
