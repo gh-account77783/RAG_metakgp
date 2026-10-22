@@ -232,7 +232,7 @@ def install(bundle: Path, environment: Path) -> dict:
     executable = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     with (environment / "bundle-install.log").open("wb") as log:
         subprocess.run([str(executable), "-m", "pip", "--isolated", "--disable-pip-version-check",
-                        "install", "--no-index", "--only-binary=:all:", "--find-links",
+                        "install", "--no-index", "--no-compile", "--only-binary=:all:", "--find-links",
                         str(bundle / "wheelhouse"), "--require-hashes", "-r",
                         str(bundle / "requirements.lock")], stdout=log, stderr=subprocess.STDOUT,
                        check=True, env=pip_environment())

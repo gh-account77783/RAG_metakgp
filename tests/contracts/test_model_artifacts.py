@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -32,6 +33,11 @@ class ModelArtifactTests(unittest.TestCase):
         self.patch = patch("tools.model_artifacts.urllib.request.urlopen", side_effect=self.response)
         self.patch.start()
         self.addCleanup(self.patch.stop)
+        # Tiny offline fixtures must not depend on the host's available disk.
+        capacity = patch("tools.model_artifacts.shutil.disk_usage",
+                         return_value=SimpleNamespace(free=8 * 1024**3))
+        capacity.start()
+        self.addCleanup(capacity.stop)
 
     def response(self, url, **kwargs):
         self.calls.append(url)
@@ -73,14 +79,18 @@ class ModelArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "download size"):
             self.collect(max_bytes=1)
         self.assertFalse(self.destination.exists())
+        with patch("tools.model_artifacts.shutil.disk_usage", return_value=SimpleNamespace(free=0)):
+            with self.assertRaisesRegex(ValueError, "Insufficient free disk"):
+                self.collect()
+        self.assertFalse(self.destination.exists())
         self.metadata["sha"] = "b" * 40
         with self.assertRaisesRegex(ValueError, "requested public"):
             self.collect()
         self.assertFalse(self.destination.exists())
-        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(len(self.calls), 3)
         with self.assertRaisesRegex(ValueError, "exact commit"):
             collect(self.destination, self.model, "main")
-        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(len(self.calls), 3)
 
     def test_verification_rejects_changed_missing_or_added_assets(self):
         self.collect()
