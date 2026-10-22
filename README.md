@@ -134,8 +134,9 @@ budget. These settings and green contract tests do not establish model quality.
 ordinary Markdown documents, imports them through the production pipeline, and
 writes per-case retrieval, graph, answer, citation, provider-call, and latency
 results. It does not treat the development JSONL snapshot as a supported user
-format. Each case retains the selected original citation passages and locators
-for manual support review. Review factual support and additional claims even
+format. Each case retains retrieved passages, source versions and locators,
+including passages the provider did not cite, alongside its selected citations.
+Image bytes are excluded from reports. Review factual support and additional claims even
 when the automatic URL-coverage score passes.
 
 With the configured model/store services already available, run the evaluation

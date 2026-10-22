@@ -264,17 +264,7 @@ class EvaluationRunner:
             "citation_pass": citation_pass,
             "answer_pass": answer_pass,
             "verification": dict(result.verification),
-            "evidence": [
-                {
-                    "display_name": item.display_name,
-                    "url": self._url(item),
-                    "locator": item.locator,
-                    "via": item.via,
-                    "score": item.score,
-                    "citation_id": item.citation_id,
-                }
-                for item in retrieved
-            ],
+            "evidence": [{**item.as_dict(), "url": self._url(item)} for item in retrieved],
         }
 
     def run(self, report_path: Path) -> dict[str, Any]:

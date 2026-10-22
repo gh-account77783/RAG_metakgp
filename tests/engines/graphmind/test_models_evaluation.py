@@ -631,6 +631,10 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual([item["citation_id"] for item in scored["cited_evidence"]], ["s", "t"])
         self.assertEqual(scored["cited_evidence"][0]["excerpt"], "course link")
         self.assertEqual(scored["cited_evidence"][0]["url"], source_url)
+        self.assertEqual(scored["evidence"][-1]["citation_id"], "unused")
+        self.assertEqual(scored["evidence"][-1]["excerpt"], "Unrelated passage.")
+        self.assertEqual(scored["evidence"][-1]["version_id"], "sv")
+        self.assertEqual(scored["evidence"][-1]["url"], source_url)
         self.assertNotIn("owned-image-bytes", json.dumps(scored))
 
     def test_abstention_retrieval_is_not_scored_as_a_retrieval_pass(self):
