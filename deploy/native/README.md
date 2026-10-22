@@ -14,6 +14,9 @@ read the release, configuration and retained model weights, and own application
 data, its `chroma` directory and the separate Ollama home. Do not put these paths
 under `/home` or `/root`: the units protect home directories. Provision these
 directories and restrictive permissions before starting services.
+Reader/worker home and library caches are explicitly inside application data;
+create those directories for the service account as well. Retained model weights
+stay in the separate read-only model directory.
 
 The example includes explicit per-service CPU/memory caps. Choose caps for the
 measured host and model workload; caps are not reservations and their sum does

@@ -63,6 +63,9 @@ def render(layout):
         'GRAPHMIND_ANSWER_MODE': 'local', 'OLLAMA_BASE_URL': endpoint,
         'GRAPHMIND_EMBEDDING_BASE_URL': endpoint, 'HF_HUB_OFFLINE': '1',
         'TRANSFORMERS_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1',
+        'HOME': str(data/'home'), 'XDG_CACHE_HOME': str(data/'cache'),
+        'HF_HOME': str(data/'cache/huggingface'), 'TORCH_HOME': str(data/'cache/torch'),
+        'MPLCONFIGDIR': str(data/'cache/matplotlib'),
     }
     app = [layout['python'], '-B', '-m', 'graphmind', '--config', layout['config'], '--dotenv', layout['dotenv']]
     specs = {
