@@ -148,6 +148,7 @@ class GraphMindApplication:
             settings.ollama_api_key,
             settings.answer_model,
             mode=settings.answer_mode,
+            image_model=settings.visual_answer_model,
             timeout=float(settings.answer_timeout_seconds),
             max_retries=settings.answer_max_retries,
             max_context_chars=settings.answer_max_context_chars,

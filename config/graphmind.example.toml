@@ -27,6 +27,8 @@ csv_delimiter = "auto"
 answer_provider = "ollama"
 answer_mode = "local"
 answer_model = "gemma4:e2b"
+# Optional retained local model for image evidence; blank reuses answer_model.
+visual_answer_model = ""
 ollama_base_url = "http://127.0.0.1:11434"
 answer_timeout_seconds = 120
 answer_max_retries = 1

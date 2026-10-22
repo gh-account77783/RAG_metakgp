@@ -107,6 +107,80 @@ class VisualLifecycleTests(unittest.TestCase):
 
 
 class VisionProviderTests(unittest.TestCase):
+    def test_explicit_image_model_preserves_text_model_controls_and_identity(self):
+        class Transport:
+            def __init__(self):
+                self.calls = []
+
+            def request_json(self, method, url, **kwargs):
+                self.calls.append((url, kwargs.get("payload")))
+                if url.endswith("/show"):
+                    return {"capabilities": ["vision"]}
+                if url.endswith("/tags"):
+                    return {"models": [{"name": name, "digest": digest} for name, digest in
+                                       (("gemma4:e4b", "text-digest"), ("owned-image", "image-digest"))]}
+                return {"message": {"content": json.dumps({"outcome": "answer", "answer": "Blue.",
+                                                            "citation_ids": ["E1"]})}}
+        transport = Transport()
+        provider = OllamaProvider("http://127.0.0.1:21434", "", "gemma4:e4b", image_model="owned-image",
+                                  mode="local", transport=transport)
+        image = Evidence("page:v:1", "doc", "v", "Owned.pdf", "page 1", "Panel", "visual", 1,
+                         image_base64="cG5n")
+        provider.answer("Which color?", [image])
+        self.assertEqual(transport.calls[0][1], {"model": "owned-image"})
+        self.assertEqual(transport.calls[1][1]["model"], "owned-image")
+        self.assertNotIn("think", transport.calls[1][1])
+        text = Evidence("text", "doc", "v", "Owned.txt", "line 1", "Blue.", "vector", 1)
+        provider.answer("Which color?", [text])
+        self.assertEqual(transport.calls[-1][1]["model"], "gemma4:e4b")
+        self.assertFalse(transport.calls[-1][1]["think"])
+        self.assertEqual(provider.identity(resolve=True)["digest"], "text-digest")
+        self.assertEqual(provider.identity(resolve=True, image=True)["digest"], "image-digest")
+        self.assertEqual(provider.model, "gemma4:e4b")
+
+    def test_missing_optional_image_model_leaves_text_readiness_available(self):
+        from graphmind.http_client import HttpStatusError
+        class Transport:
+            calls = []
+            def request_json(self, method, url, **kwargs):
+                self.calls.append(url)
+                if url.endswith("/show"):
+                    raise HttpStatusError(404)
+                return {"models": [{"name": "text-model", "digest": "text-digest"}]}
+        transport = Transport()
+        provider = OllamaProvider("http://127.0.0.1:21434", "", "text-model", image_model="missing",
+                                  mode="local", transport=transport)
+        self.assertTrue(provider.readiness().available)
+        self.assertFalse(provider.image_readiness().available)
+        self.assertTrue(provider.readiness().available)
+        before = len(transport.calls)
+        provider.mode = "hosted"
+        with self.assertRaises(ProviderResponseError):
+            provider.identity(resolve=True, image=True)
+        self.assertEqual(len(transport.calls), before)
+
+    def test_image_model_configuration_uses_the_shared_provider(self):
+        from graphmind.errors import ConfigurationError
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            settings = make_settings(root, answer_mode="local", visual_answer_model="owned-image",
+                                     ollama_base_url="http://127.0.0.1:21434",
+                                     enabled_engines=("graphmind", "tree_navigation"))
+            with GraphMindApplication(settings, vector=MemoryVectorStore(HashEmbedding(settings.embedding_dimension)),
+                                     graph=MemoryGraphStore()) as app:
+                self.assertEqual(app.answers.provider.image_model, "owned-image")
+                self.assertIs(app.tree.provider, app.answers.provider)
+            with self.assertRaisesRegex(ConfigurationError, "GRAPHMIND_VISUAL_ANSWER_MODEL"):
+                make_settings(root, answer_mode="hosted", visual_answer_model="owned-image")
+            with self.assertRaisesRegex(ConfigurationError, "GRAPHMIND_VISUAL_ANSWER_MODEL"):
+                make_settings(root, answer_mode="local", visual_answer_model="   ",
+                              ollama_base_url="http://127.0.0.1:21434")
+            from graphmind.config import Settings
+            loaded = Settings.load(dotenv_path=root/"missing.env", environ={
+                "GRAPHMIND_ANSWER_MODE": "local", "OLLAMA_BASE_URL": "http://127.0.0.1:21434",
+                "GRAPHMIND_VISUAL_ANSWER_MODEL": "owned-image"})
+            self.assertEqual(loaded.diagnostics()["visual_answer_model"], "owned-image")
+
     def test_image_input_requires_local_vision_and_stays_out_of_serialized_citations(self):
         from graphmind.domain import QueryResult
         class Transport:

@@ -195,6 +195,14 @@ depending on the runtime's hardware-dependent default; increased context uses
 more memory and still needs qualification on the target host. Hosted requests
 leave context allocation to their provider.
 
+`visual_answer_model` (`GRAPHMIND_VISUAL_ANSWER_MODEL`) optionally selects a
+separate retained model for requests containing image evidence. It requires
+local answer mode; an empty value reuses `answer_model`. Both inputs use the
+same provider, endpoint, admission lock, context/output budgets and citation
+validation. Image readiness checks the configured image model independently
+of text readiness. Record its actual digest with
+`provider.identity(resolve=True, image=True)` when qualifying visual answers.
+
 ## Maintenance rule
 
 For every dependency change:

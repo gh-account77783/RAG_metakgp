@@ -48,6 +48,7 @@ _ENV_KEYS = {
     "OLLAMA_API_KEY": "ollama_api_key",
     "ollama_api_key": "ollama_api_key",
     "GRAPHMIND_ANSWER_MODEL": "answer_model",
+    "GRAPHMIND_VISUAL_ANSWER_MODEL": "visual_answer_model",
     "GRAPHMIND_ANSWER_PROVIDER": "answer_provider",
     "GRAPHMIND_ANSWER_MODE": "answer_mode",
     "GRAPHMIND_ANSWER_TIMEOUT_SECONDS": "answer_timeout_seconds",
@@ -179,6 +180,7 @@ class Settings:
     ollama_base_url: str = "https://ollama.com"
     ollama_api_key: str = field(default="", repr=False)
     answer_model: str = "gemma4:31b"
+    visual_answer_model: str = ""
     answer_provider: str = "ollama"
     answer_mode: str = "hosted"
     answer_timeout_seconds: int = 60
@@ -439,6 +441,9 @@ class Settings:
             raise ConfigurationError("Local answer mode requires a loopback OLLAMA_BASE_URL")
         if not self.answer_model.strip():
             raise ConfigurationError("GRAPHMIND_ANSWER_MODEL cannot be empty")
+        if self.visual_answer_model and (
+                not self.visual_answer_model.strip() or self.answer_mode != "local"):
+            raise ConfigurationError("GRAPHMIND_VISUAL_ANSWER_MODEL requires a model name and local answer mode")
         embedding_url = urlparse(self.embedding_base_url)
         if embedding_url.scheme not in {"http", "https"} or not embedding_url.netloc:
             raise ConfigurationError("GRAPHMIND_EMBEDDING_BASE_URL must be an absolute HTTP(S) URL")
@@ -595,6 +600,7 @@ class Settings:
             "neo4j_database": self.neo4j_database,
             "answer_provider": self.answer_provider,
             "answer_model": self.answer_model,
+            "visual_answer_model": self.visual_answer_model,
             "answer_mode": self.answer_mode,
             "answer_timeout_seconds": self.answer_timeout_seconds,
             "answer_max_retries": self.answer_max_retries,

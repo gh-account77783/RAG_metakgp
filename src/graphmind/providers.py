@@ -94,6 +94,7 @@ class OllamaProvider:
         model: str,
         *,
         mode: str = "hosted",
+        image_model: str = "",
         timeout: float = 60.0,
         max_retries: int = 2,
         retry_backoff: float = 0.25,
@@ -107,6 +108,7 @@ class OllamaProvider:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
+        self.image_model = image_model
         self.mode = mode
         self.timeout = timeout
         self.max_retries = max_retries
@@ -266,6 +268,7 @@ class OllamaProvider:
             raise ProviderResponseError("No evidence fits within the configured context budget")
         included = {item["citation_id"] for item in evidence_payload}
         images = [item for item in evidence if item.image_base64 and item.citation_id in included]
+        selected_model = self._model_for_input(image=bool(images))
         if images:
             if len(images) > 3 or sum(len(item.image_base64) for item in images) > 32 * 1024 * 1024:
                 raise ProviderResponseError("Visual evidence exceeds its image budget")
@@ -303,7 +306,7 @@ class OllamaProvider:
             "provides a person's full name, use that full name rather than initials."
         )
         body = {
-            "model": self.model,
+            "model": selected_model,
             "messages": [
                 {"role": "system", "content": system},
                 {
@@ -323,7 +326,7 @@ class OllamaProvider:
         # output budget on message.thinking and can return no final JSON.
         # Request the final structured answer; never parse a reasoning trace or
         # enlarge the budget. Other models and hosted controls stay unchanged.
-        if self.mode == "local" and self.model in BOUNDED_GEMMA_PRESETS:
+        if self.mode == "local" and selected_model in BOUNDED_GEMMA_PRESETS:
             body["think"] = False
         if images:
             body["messages"][0]["content"] += (
@@ -346,14 +349,17 @@ class OllamaProvider:
         return ProviderAnswer(answer.outcome, answer.answer,
                               tuple(citation_map[value] for value in answer.citation_ids))
 
-    def _require_image_input(self) -> None:
+    def _require_local_image_endpoint(self) -> None:
         # This initial visual adapter is local-only. Reject hosted/remote
         # configuration before any metadata request or image transmission.
         if self.mode != "local" or urlparse(self.base_url).hostname not in {"127.0.0.1", "localhost", "::1"}:
             raise ProviderResponseError("Visual answers require a qualified local image-input provider")
+
+    def _require_image_input(self) -> None:
+        self._require_local_image_endpoint()
         try:
             metadata = self.transport.request_json("POST", f"{self.base_url}/api/show",
-                headers=self._headers(), payload={"model": self.model}, timeout=min(self.timeout, 3.0))
+                headers=self._headers(), payload={"model": self._model_for_input(image=True)}, timeout=min(self.timeout, 3.0))
         except HttpClientError as exc:
             raise ProviderUnavailableError("Cannot verify image-input model capability") from exc
         capabilities = metadata.get("capabilities")
@@ -376,12 +382,20 @@ class OllamaProvider:
         except ProviderError:
             return AdapterStatus("answer-provider", False, "unavailable")
 
-    def identity(self, *, resolve: bool = False, timeout: float | None = None) -> dict[str, object]:
+    def _model_for_input(self, *, image: bool = False) -> str:
+        return self.image_model if image and self.image_model else self.model
+
+    def identity(self, *, resolve: bool = False, timeout: float | None = None,
+                 image: bool = False) -> dict[str, object]:
+        if image:
+            self._require_local_image_endpoint()
+        selected_model = self._model_for_input(image=image)
         identity: dict[str, object] = {
             "provider": "ollama",
             "mode": self.mode,
             "base_url": self.base_url,
-            "model": self.model,
+            "model": selected_model,
+            "input_kind": "image" if image else "text",
             "timeout_seconds": self.timeout,
             "max_retries": self.max_retries,
             "max_context_chars": self.max_context_chars,
@@ -391,7 +405,7 @@ class OllamaProvider:
         }
         if self.mode == "local":
             identity["context_tokens"] = self.local_context_tokens
-            if self.model in BOUNDED_GEMMA_PRESETS:
+            if selected_model in BOUNDED_GEMMA_PRESETS:
                 identity["thinking"] = "disabled"
         if not resolve:
             return identity
@@ -412,12 +426,12 @@ class OllamaProvider:
             if not isinstance(item, dict):
                 continue
             names = {str(item.get("name", "")), str(item.get("model", ""))}
-            if self.model in names or f"{self.model}:latest" in names:
+            if selected_model in names or f"{selected_model}:latest" in names:
                 identity["digest"] = str(item.get("digest", ""))
                 details = item.get("details")
                 if isinstance(details, dict):
                     identity["quantization"] = str(details.get("quantization_level", "unknown"))
                 break
         if "digest" not in identity:
-            raise ModelNotFoundError(f"Answer model is not available: {self.model}")
+            raise ModelNotFoundError(f"Answer model is not available: {selected_model}")
         return identity
