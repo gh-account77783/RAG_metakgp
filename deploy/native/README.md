@@ -90,3 +90,57 @@ permissions. This is process hardening, not a parser security sandbox.
 
 Native Windows service installation remains a separate target; these systemd
 files do not substitute for Windows 11 or Server 2025 acceptance.
+
+## Python software update and rollback
+
+Install the new hash-verified bundle into a **different immutable release
+directory** using `tools/release_bundle.py install`; retain the old environment
+and its bundle. Qualify the new environment outside the checkout before touching
+services. Changes to database schemas, native binaries or model/index recipes
+need their own compatibility and recovery procedure; these steps switch only
+the Python reader/worker/Chroma closure.
+
+Prepare the three service-command overrides from the existing application layout:
+
+```console
+python tools/ubuntu_release_files.py /private/current-layout.json /opt/graphmind/releases/new /private/update-files
+```
+
+The tool reuses the service renderer, requires Python and Chroma from one release,
+rejects overlapping state/model/release paths, and retains override/base-template
+hashes. It does not inspect credentials, install files or stop/start services.
+All environment, native backend, user, state and model settings remain in the
+existing units. It leaves Ollama on its qualified native binary.
+
+For an approved update, use this order:
+
+1. Check free disk and service health. Stop the namespace's worker gracefully,
+   verify no queued/running jobs or active query remain, and take a verified
+   host-private consistent backup of state and protected configuration. Retain
+   the exact existing units and drop-ins, ownership/modes and enabled state.
+2. Review the three generated `ExecStart` overrides against the **effective**
+   installed units, including existing drop-ins. The manifest's base hashes
+   identify the supplied layout, not an inspection of live configuration.
+   Verify new executable paths and the offline-install receipt. Preserve any
+   existing `50-graphmind-release.conf` files for rollback; never overwrite an
+   unrelated namespace or a later override without review.
+3. Stop the reader, then Chroma. Install only the reviewed reader/worker/Chroma
+   overrides in their matching `/etc/systemd/system/NAME.service.d/` directories.
+   Reload systemd, verify effective commands, and start Chroma followed by the
+   reader. Keep the worker stopped while checking the candidate.
+4. Check actual Chroma/graph/identity connectivity, reader readiness and original
+   source/version hashes, every configured engine head, catalogue and original
+   page access. Reader readiness alone can mean only one engine is available.
+   Complete the affected client/inference smoke separately when authorized.
+   Start the worker after checks pass; retain exact artifact and unit hashes.
+5. If checks fail, preserve the failure, stop the same three services, restore
+   their exact previous overrides (remove only newly created update files),
+   reload and resume the old release in the same order. Verify the same source
+   and backend checks before restarting work. A code rollback is safe only when
+   persisted state remains compatible; otherwise restore the corresponding
+   verified private snapshot while all state writers are stopped.
+
+Exercise rollback and reapply with owned data before relying on this procedure.
+Do not install into the active environment, relabel failed checks as passing,
+delete retained release inputs, or include database/configuration backups in
+downloadable public receipts.
