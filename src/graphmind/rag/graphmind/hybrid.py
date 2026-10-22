@@ -43,7 +43,7 @@ class HybridGraphMind:
                              else {"implementation": type(self.reranker).__name__}),
                 "candidate_limit": 50, "rrf_k": 60, "min_relevance": self.min_relevance,
                 "reference_hops": 1, "per_source_evidence_limit": 3,
-                "query_recipe": "source-title-reference-binding-v3"}
+                "query_recipe": "source-title-reference-binding-v4"}
 
     @staticmethod
     def _seed_query(query: str) -> str:
@@ -53,9 +53,21 @@ class HybridGraphMind:
         if (not re.search(r"\b(?:links?|linked|instructor|professor|teacher)\b", query, re.I)
                 or re.search(r"\b(?:compare|comparison|both|between)\b", query, re.I)):
             return query
-        match = re.match(r"(.*?\b(?:page|document)\b)(?=\s+(?:links?|lists?|names?|identifies?|refers?)\b|[,.])",
+        relation = re.match(r"(.*?\b(?:page|document)\b\s+(?:links?|lists?|names?|identifies?|refers?)\b[^.!?]*\.?)",
+                            query, re.I)
+        if relation:
+            return relation[1]
+        match = re.match(r"(.*?\b(?:page|document)\b)(?=[,.])",
                          query, re.I)
         return match[1] if match else query
+
+    @staticmethod
+    def _passage_key(item):
+        body = item["text"].strip()
+        heading = re.match(r'^heading "([^"]+)"[^;]*;', item["locator"])
+        if heading and body.startswith(heading[1] + "\n"):
+            body = body[len(heading[1]) + 1:]
+        return item["version"].version_id, re.sub(r"\s+", " ", body.casefold())
 
     def recipe(self) -> IndexRecipe:
         return IndexRecipe.create("graphmind", REVISION,
@@ -201,12 +213,14 @@ class HybridGraphMind:
             return []
         cache = {}
         seeds = self._pool(self._seed_query(query), heads, cache)
-        chosen, counts = [], {}
+        chosen, counts, seed_seen = [], {}, set()
         for item in seeds:
             document_id = item["document"].document_id
-            if item["score"] >= self.min_relevance and counts.get(document_id, 0) < 2:
+            key = self._passage_key(item)
+            if key not in seed_seen and item["score"] >= self.min_relevance and counts.get(document_id, 0) < 2:
                 chosen.append(item)
                 counts[document_id] = counts.get(document_id, 0) + 1
+                seed_seen.add(key)
             if len(chosen) >= self.seed_limit:
                 break
         if not chosen:
@@ -223,11 +237,7 @@ class HybridGraphMind:
         # ranked lists so both the reference origin and its target retain room.
         merged = [item for pair in zip_longest(chosen, linked) for item in pair if item is not None]
         for item in merged:
-            body = item["text"].strip()
-            heading = re.match(r'^heading "([^"]+)"[^;]*;', item["locator"])
-            if heading and body.startswith(heading[1] + "\n"):
-                body = body[len(heading[1]) + 1:]
-            body_key = (item["version"].version_id, re.sub(r"\s+", " ", body.casefold()))
+            body_key = self._passage_key(item)
             document = item["document"]
             if (body_key in seen or item["score"] < self.min_relevance
                     or counts.get(document.document_id, 0) >= 3):

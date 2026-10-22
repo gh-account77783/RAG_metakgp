@@ -34,7 +34,7 @@ class HybridPrimitiveTests(unittest.TestCase):
     def test_origin_query_keeps_literal_page_identity_for_reference_questions(self):
         from graphmind.rag.graphmind.hybrid import HybridGraphMind
         self.assertEqual(HybridGraphMind._seed_query(
-            "The Orion page links to its instructor. When did she join?"), "The Orion page")
+            "The Orion page links to its instructor. When did she join?"), "The Orion page links to its instructor.")
         self.assertEqual(HybridGraphMind._seed_query(
             "According to the Vega course page, when did its professor join?"),
             "According to the Vega course page")
@@ -100,6 +100,27 @@ class HybridPrimitiveTests(unittest.TestCase):
 
 
 class HybridLifecycleTests(unittest.TestCase):
+    def test_duplicate_seed_aliases_leave_room_for_the_reference_relationship(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            course, faculty = root / "course.md", root / "faculty.md"
+            course.write_text("# OR123\n\nSource URL: https://owned.example/OR123\n\n"
+                              "## Autumn 2030\n\nInstructor: [[faculty.md]]\n", encoding="utf-8")
+            faculty.write_text("# Dr Rowan\n\nYear joined: 2009.\n", encoding="utf-8")
+            with self.application(root) as app:
+                run_submission(app, course)
+                run_submission(app, faculty)
+                class Reranker:
+                    def score(self, question, passages):
+                        return [0.99 if "Source URL:" in item else 0.8 if "Instructor:" in item
+                                else 0.001 for item in passages]
+                    def score_pairs(self, pairs):
+                        return [0.9 if "Year joined:" in item else 0.001 for _, item in pairs]
+                app.hybrid.reranker = Reranker()
+                evidence = app.retrieval.retrieve("The OR123 page links to its instructor. When did she join?")
+                self.assertTrue(any("Instructor:" in item.excerpt for item in evidence))
+                self.assertTrue(any("Year joined:" in item.excerpt for item in evidence))
+
     def test_reference_ranking_binds_original_target_title_and_keeps_both_sources(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
