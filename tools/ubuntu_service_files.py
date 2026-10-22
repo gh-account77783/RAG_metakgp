@@ -22,6 +22,44 @@ def quote(value):
     return json.dumps(value.replace('%', '%%'), ensure_ascii=False)
 
 
+def scalar_path(value):
+    # Single-path directives take the literal value, unlike command/env lists.
+    quote(value)
+    if value != value.strip():
+        raise ValueError('Scalar paths must not start or end with whitespace')
+    return value.replace('%', '%%')
+
+
+def service_lines(*, description, user, command, writable, environment, after,
+                  memory_bytes, cpu_quota_percent, wants=('network-online.target',),
+                  timeout_stop=2000, environment_files=(), limit_nofile=None,
+                  requires=(), working_directory=None, kill_signal=None):
+    """One set of isolation and process-lifecycle properties for native services."""
+    lines = ['[Unit]', 'Description=' + description, 'After=' + ' '.join(after),
+             'Wants=' + ' '.join(wants), 'StartLimitIntervalSec=60', 'StartLimitBurst=5',
+             '', '[Service]', 'Type=exec', f'User={user}', f'Group={user}', 'UMask=0077',
+             # ':' disables systemd's environment expansion in command arguments.
+             'ExecStart=:' + ' '.join(quote(item) for item in command),
+             f'MemoryMax={memory_bytes}', f'CPUQuota={cpu_quota_percent}%',
+             'Restart=on-failure', 'RestartSec=5', f'TimeoutStopSec={timeout_stop}',
+             # Signal the parent first; its fenced job may still own a worker.
+             'KillMode=mixed', 'NoNewPrivileges=true', 'CapabilityBoundingSet=',
+             'PrivateTmp=true', 'PrivateDevices=true', 'ProtectSystem=strict', 'ProtectHome=true',
+             'ProtectKernelTunables=true', 'ProtectKernelModules=true', 'ProtectControlGroups=true',
+             'RestrictSUIDSGID=true', 'ReadWritePaths=' + ' '.join(quote(item) for item in writable)]
+    lines += ['Environment=' + quote(key + '=' + value) for key, value in environment.items()]
+    lines += ['EnvironmentFile=' + scalar_path(path) for path in environment_files]
+    if requires:
+        lines.insert(4, 'Requires=' + ' '.join(requires))
+    if working_directory is not None:
+        lines.append('WorkingDirectory=' + scalar_path(working_directory))
+    if kill_signal is not None:
+        lines.append('KillSignal=' + kill_signal)
+    if limit_nofile is not None:
+        lines.append(f'LimitNOFILE={limit_nofile}')
+    return lines + ['', '[Install]', 'WantedBy=multi-user.target', '']
+
+
 def validate(layout):
     if not isinstance(layout, dict) or set(layout) != FIELDS or layout["schema_version"] != 1:
         raise ValueError("Expected the complete schema_version 1 service layout")
@@ -84,22 +122,25 @@ def render(layout):
     units = {}
     for role, (command, writable, environment, dependencies) in specs.items():
         after = ['network-online.target', *(f'{name}-{item}.service' for item in dependencies)]
-        lines = ['[Unit]', f'Description=GraphMind {role}', 'After=' + ' '.join(after),
-                 'Wants=network-online.target', 'StartLimitIntervalSec=60', 'StartLimitBurst=5',
-                 '', '[Service]', 'Type=exec', f'User={user}', f'Group={user}', 'UMask=0077',
-                 # ':' disables systemd's environment expansion in command arguments.
-                 'ExecStart=:' + ' '.join(quote(item) for item in command),
-                 f"MemoryMax={layout[role + '_memory_bytes']}", f"CPUQuota={layout['cpu_quota_percent']}%",
-                 'Restart=on-failure', 'RestartSec=5', 'TimeoutStopSec=2000',
-                 # Signal the parent first; its fenced job may still own a worker.
-                 'KillMode=mixed', 'NoNewPrivileges=true', 'CapabilityBoundingSet=',
-                 'PrivateTmp=true', 'PrivateDevices=true', 'ProtectSystem=strict', 'ProtectHome=true',
-                 'ProtectKernelTunables=true', 'ProtectKernelModules=true', 'ProtectControlGroups=true',
-                 'RestrictSUIDSGID=true', 'ReadWritePaths=' + ' '.join(quote(item) for item in writable)]
-        lines += ['Environment=' + quote(key + '=' + value) for key, value in environment.items()]
-        lines += ['', '[Install]', 'WantedBy=multi-user.target', '']
+        lines = service_lines(description=f'GraphMind {role}', user=user, command=command,
+            writable=writable, environment=environment, after=after,
+            memory_bytes=layout[role + '_memory_bytes'], cpu_quota_percent=layout['cpu_quota_percent'])
         units[f'{name}-{role}.service'] = '\n'.join(lines)
     return units
+
+
+def write_units(units, output, *, verify=False):
+    """Retain new reviewable files and their hashes; never install or start units."""
+    output.mkdir(mode=0o700, parents=True, exist_ok=False)
+    digests = {}
+    for name, body in units.items():
+        path = output/name; path.write_text(body, encoding='utf-8', newline='\n')
+        digests[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    (output/'service-files.json').write_text(json.dumps({'schema_version': 1, 'unit_sha256': digests}, indent=2))
+    if verify:
+        with (output/'verify.log').open('w') as stream:
+            subprocess.run(['systemd-analyze', 'verify', *(str((output/name).resolve()) for name in units)],
+                           stdout=stream, stderr=subprocess.STDOUT, check=True)
 
 
 def main():
@@ -116,16 +157,7 @@ def main():
         import pwd
         if pwd.getpwnam(layout['user']).pw_uid == 0:
             parser.error('The chosen service account resolves to UID 0')
-    args.output.mkdir(mode=0o700, parents=True, exist_ok=False)
-    digests = {}
-    for name, body in units.items():
-        path = args.output/name; path.write_text(body, encoding='utf-8', newline='\n')
-        digests[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    (args.output/'service-files.json').write_text(json.dumps({'schema_version': 1, 'unit_sha256': digests}, indent=2))
-    if args.verify:
-        with (args.output/'verify.log').open('w') as stream:
-            subprocess.run(['systemd-analyze', 'verify', *(str((args.output/name).resolve()) for name in units)],
-                           stdout=stream, stderr=subprocess.STDOUT, check=True)
+    write_units(units, args.output, verify=args.verify)
     print(json.dumps({'output': str(args.output), 'units': list(units), 'activated': False}))
 
 

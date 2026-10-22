@@ -2,8 +2,9 @@
 
 `tools/ubuntu_service_files.py` renders one reader/worker/Chroma/Ollama unit set
 from a nonsecret JSON layout. It does not download, create accounts, install,
-enable, start or replace services. Keycloak/PostgreSQL, Neo4j, HTTPS and their
-backup/update procedures must be configured separately. These files alone are
+enable, start or replace services. `tools.ubuntu_backend_files` renders companion
+PostgreSQL/Keycloak/Neo4j units using the same isolation and process-limit renderer.
+Backend configuration, HTTPS and backup/update procedures remain separate. These files alone are
 not a qualified installation or reboot/restore procedure.
 
 Start from `ubuntu.example.json`, choose an unused `graphmind-...` namespace and
@@ -41,6 +42,36 @@ on that Ubuntu host. An existing output directory is refused. The generated
 manifest hashes the unit files; preserve failed verification logs and inspect
 the files before installing them. Verification does not establish permissions,
 available ports, dependency readiness, authentication or model behavior.
+
+For native backends, start from `ubuntu.backends.example.json` and use the same
+service namespace as the application layout:
+
+```console
+python -m tools.ubuntu_backend_files /private/backends.json /private/new-backend-files --verify
+```
+
+Each backend needs its own existing non-root account and non-overlapping state
+directory. Keep verified binaries/JDKs immutable and outside protected homes.
+PostgreSQL runs its native `postgres` process with the existing data directory;
+`library_dir` supplies only that process's private native libraries. Configure
+its loopback listener, socket directory and authentication before activation.
+Initialize a new cluster once with vendor tools; never initialize over retained
+data. PostgreSQL receives SIGINT for fast, orderly shutdown.
+
+Keycloak uses an already optimized native distribution, including the qualified
+GraphMind recovery provider. Its protected environment file supplies database
+and identity configuration; the renderer neither reads that file nor copies its
+values into units. Place writable Keycloak data under its state directory and
+configure the release's data link accordingly. It requires the same namespace's
+PostgreSQL service. Neo4j uses `console`, the explicit JDK and `NEO4J_CONF`;
+configure data/log/run/import directories under its state directory, loopback
+connectors and initial authentication before first startup. Preserve vendor
+licenses/notices and qualify artifact versions independently of these layouts.
+
+Keep passwords/client secrets out of both JSON layouts. Configure the reader's
+existing shared identity and graph connection to these services, and add explicit
+`Wants`/`After` dependencies on them for the reader/worker as appropriate. The
+renderers do not change application configuration, permissions or service state.
 
 For an explicitly approved installation, install only that reviewed namespace's
 unit files into `/etc/systemd/system`, reload systemd, and start its Chroma and

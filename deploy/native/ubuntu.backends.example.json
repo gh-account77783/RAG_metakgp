@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "graphmind-example",
+  "cpu_quota_percent": 200,
+  "postgresql": {
+    "user": "graphmind-pg",
+    "state_dir": "/var/lib/graphmind-postgresql",
+    "data_dir": "/var/lib/graphmind-postgresql/data",
+    "binary": "/opt/graphmind/native/postgresql/bin/postgres",
+    "library_dir": "/opt/graphmind/native/postgresql/lib",
+    "memory_bytes": 1073741824
+  },
+  "keycloak": {
+    "user": "graphmind-kc",
+    "state_dir": "/var/lib/graphmind-keycloak",
+    "home": "/opt/graphmind/native/keycloak",
+    "java_home": "/opt/graphmind/native/java",
+    "environment_file": "/etc/graphmind/keycloak.env",
+    "memory_bytes": 1610612736
+  },
+  "neo4j": {
+    "user": "graphmind-neo4j",
+    "state_dir": "/var/lib/graphmind-neo4j",
+    "home": "/opt/graphmind/native/neo4j",
+    "java_home": "/opt/graphmind/native/java",
+    "config_dir": "/etc/graphmind/neo4j",
+    "memory_bytes": 1610612736
+  }
+}
