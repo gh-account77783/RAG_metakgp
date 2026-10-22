@@ -43,7 +43,19 @@ class HybridGraphMind:
                              else {"implementation": type(self.reranker).__name__}),
                 "candidate_limit": 50, "rrf_k": 60, "min_relevance": self.min_relevance,
                 "reference_hops": 1, "per_source_evidence_limit": 3,
-                "query_recipe": "source-title-reference-binding-v2"}
+                "query_recipe": "source-title-reference-binding-v3"}
+
+    @staticmethod
+    def _seed_query(query: str) -> str:
+        # A question about a referenced person's attributes may be a poor
+        # match for the originating page, which only identifies that person.
+        # Keep one literal origin clause; target ranking still uses the full question.
+        if (not re.search(r"\b(?:links?|linked|instructor|professor|teacher)\b", query, re.I)
+                or re.search(r"\b(?:compare|comparison|both|between)\b", query, re.I)):
+            return query
+        match = re.match(r"(.*?\b(?:page|document)\b)(?=\s+(?:links?|lists?|names?|identifies?|refers?)\b|[,.])",
+                         query, re.I)
+        return match[1] if match else query
 
     def recipe(self) -> IndexRecipe:
         return IndexRecipe.create("graphmind", REVISION,
@@ -188,7 +200,7 @@ class HybridGraphMind:
                 raise ManifestUnavailableError("GraphMind hybrid indexes have not been built")
             return []
         cache = {}
-        seeds = self._pool(query, heads, cache)
+        seeds = self._pool(self._seed_query(query), heads, cache)
         chosen, counts = [], {}
         for item in seeds:
             document_id = item["document"].document_id

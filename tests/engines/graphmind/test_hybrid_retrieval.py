@@ -31,6 +31,16 @@ class NoDenseHits(MemoryVectorStore):
 
 
 class HybridPrimitiveTests(unittest.TestCase):
+    def test_origin_query_keeps_literal_page_identity_for_reference_questions(self):
+        from graphmind.rag.graphmind.hybrid import HybridGraphMind
+        self.assertEqual(HybridGraphMind._seed_query(
+            "The Orion page links to its instructor. When did she join?"), "The Orion page")
+        self.assertEqual(HybridGraphMind._seed_query(
+            "According to the Vega course page, when did its professor join?"),
+            "According to the Vega course page")
+        for question in ("What is a page?", "Compare both instructors between the Orion page and Vega page."):
+            self.assertEqual(HybridGraphMind._seed_query(question), question)
+
     def test_fusion_uses_ranks_without_counting_duplicates_twice(self):
         self.assertEqual(reciprocal_rank_fusion(["a", "b"], ["b", "c"]), ["b", "a", "c"])
         self.assertEqual(reciprocal_rank_fusion(["a", "a"], ["b"]), ["a", "b"])
