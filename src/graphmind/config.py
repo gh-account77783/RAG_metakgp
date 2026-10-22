@@ -19,6 +19,7 @@ _ENV_KEYS = {
     "GRAPHMIND_COLLECTION_ID": "collection_id",
     "GRAPHMIND_COLLECTION_NAME": "collection_name",
     "GRAPHMIND_MAX_FILE_BYTES": "max_file_bytes",
+    "GRAPHMIND_MIN_FREE_DISK_BYTES": "min_free_disk_bytes",
     "GRAPHMIND_CHUNK_SIZE": "chunk_size",
     "GRAPHMIND_CHUNK_OVERLAP": "chunk_overlap",
     "GRAPHMIND_EMBEDDING_PROVIDER": "embedding_provider",
@@ -150,6 +151,7 @@ class Settings:
     chroma_host: str = "127.0.0.1"
     chroma_port: int = 18001
     max_file_bytes: int = 25 * 1024 * 1024
+    min_free_disk_bytes: int = 512 * 1024 * 1024
     chunk_size: int = 1200
     chunk_overlap: int = 120
     embedding_provider: str = "hash"
@@ -290,6 +292,7 @@ class Settings:
         values["enabled_engines"] = tuple(sorted(set(engines)))
         for key in (
             "max_file_bytes",
+            "min_free_disk_bytes",
             "chroma_port",
             "chunk_size",
             "chunk_overlap",
@@ -365,6 +368,8 @@ class Settings:
             raise ConfigurationError("Collection identifiers cannot be empty")
         if self.max_file_bytes <= 0:
             raise ConfigurationError("max_file_bytes must be greater than zero")
+        if self.min_free_disk_bytes < 1:
+            raise ConfigurationError("min_free_disk_bytes must be greater than zero")
         if self.chunk_size <= 0 or self.chunk_overlap < 0 or self.chunk_overlap >= self.chunk_size:
             raise ConfigurationError("chunk overlap must be non-negative and smaller than chunk size")
         if self.embedding_dimension < 32:
@@ -563,6 +568,7 @@ class Settings:
             "visual_model_dir": self.visual_model_dir,
             "visual_build_timeout_seconds": self.visual_build_timeout_seconds,
             "max_file_bytes": self.max_file_bytes,
+            "min_free_disk_bytes": self.min_free_disk_bytes,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
             "embedding_provider": self.embedding_provider,

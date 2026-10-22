@@ -4,6 +4,7 @@ allowed_import_roots = ["."]
 collection_id = "default"
 collection_name = "graphmind_chunks"
 max_file_bytes = 26214400
+min_free_disk_bytes = 536870912 # Local data-volume reserve; not a storage quota.
 chunk_size = 1200
 chunk_overlap = 120
 embedding_provider = "ollama"

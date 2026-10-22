@@ -169,6 +169,10 @@ class EmbeddingMismatchError(EmbeddingError):
     code = "embedding_fingerprint_mismatch"
 
 
+class StorageCapacityError(GraphMindError):
+    code = "storage_capacity_unavailable"
+
+
 class QueryBudgetError(GraphMindError):
     code = "query_budget_exceeded"
 

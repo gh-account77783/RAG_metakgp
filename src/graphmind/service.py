@@ -13,6 +13,7 @@ from .ingestion import IngestionService
 from .jobs import DurableJobExecutor
 from .metadata import MetadataStore
 from .sources import SourceService
+from .storage_budget import storage_readiness
 from .rag.components.indexes import IndexRepository
 from .rag.components.artifacts import DerivedArtifactStore
 from .rag.components.local_inference import LocalCrossEncoder, LocalInference
@@ -196,7 +197,7 @@ class GraphMindApplication:
             if statuses and all(item.available for item in statuses):
                 available = True
                 break
-        return (self.files.readiness(),
+        return (storage_readiness(self.settings), self.files.readiness(),
                 AdapterStatus("rag-engines", available, "available" if available else "unavailable"),
                 self.answers.provider.readiness())
 
@@ -232,7 +233,8 @@ class GraphMindApplication:
         return result
 
     def _storage_readiness(self):
-        return (self.files.readiness(), *(status for group in self.engine_readiness().values() for status in group))
+        return (storage_readiness(self.settings), self.files.readiness(),
+                *(status for group in self.engine_readiness().values() for status in group))
 
     def audit_manifest(self) -> AdapterStatus:
         try:

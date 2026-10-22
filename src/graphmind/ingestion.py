@@ -29,6 +29,7 @@ from .errors import (
 from .files import FileStore
 from .metadata import MetadataStore, utc_now
 from .parsing import ExtractionResult, IsolatedExtractor, SUPPORTED_MEDIA_TYPES
+from .storage_budget import require_storage
 from .rag.components.vector_store import VectorStore
 from .rag.graphmind.reference_graph import GraphStore
 from .rag.components.index_contracts import IndexInventory
@@ -269,6 +270,7 @@ class IngestionService:
         if any(engine != "graphmind" and engine not in self.backends for engine in selected):
             raise EngineUnavailableError("A selected engine is not implemented or configured")
         resolved, raw, suffix = self._read_source(source)
+        require_storage(self.settings, additional_bytes=len(raw))
         if engines is None and suffix != ".pdf":
             selected = tuple(engine for engine in selected if engine == "graphmind")
             if not selected:
@@ -379,6 +381,7 @@ class IngestionService:
         ):
             return ImportSubmission(existing, stored_version, stored_job, extraction.warnings)
 
+        require_storage(self.settings, additional_bytes=len(raw))
         self.files.put_bytes(document_id, version_id, raw, suffix)
         self._fail("after_stage")
         stored_document = self.metadata.put_document(document, allow_restore=allow_restore)
@@ -543,6 +546,8 @@ class IngestionService:
 
     def process_job(self, job: Job) -> None:
         self.metadata.assert_job_lease(job)
+        if job.operation != "delete_document":
+            require_storage(self.settings)
         if job.operation == "build_index" or (job.payload_json != "{}" and job.operation in {"import_txt", "import_document"}):
             targets = self.indexes._targets(job)
             self._process_selected(job, targets)

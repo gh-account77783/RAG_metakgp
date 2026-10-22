@@ -102,6 +102,14 @@ When a reader and host CLI run concurrently, configure the separate loopback
 Chroma server as described in [ARCHITECTURE.md](documentation/ARCHITECTURE.md#chroma-persistence-ownership).
 These host commands do not expose an upload or administration route to readers.
 
+`min_free_disk_bytes` (environment: `GRAPHMIND_MIN_FREE_DISK_BYTES`) keeps a
+512 MiB default reserve on the local application data volume. Import admission
+and index jobs check it; low space reports `storage_capacity_unavailable` and
+leaves the previous active source available. Free space and retry the failed
+job. Deletion remains available for cleanup. Readiness reports low capacity;
+this preflight check is not a quota, and separate database/model volumes need
+their own capacity monitoring.
+
 The deterministic hash embedding remains an offline diagnostic adapter only. The production candidate uses `BAAI/bge-m3` through same-host Ollama and fingerprints its full digest, reported precision and 1024-dimensional output. Changing that identity requires explicit reindexing. Bounded real identity/client functionality is verified; full quality, installers and release qualification remain later gates.
 
 The local `gemma4:e2b` and `gemma4:e4b` presets request `think: false` for their bounded
