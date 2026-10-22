@@ -1,2 +1,11 @@
 [extend]
 useDefault = true
+
+[[allowlists]]
+description = "Verified static-build source digest, not an API credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)assets/web/graphmind\.frontend\.json$''']
+regexTarget = "line"
+# Recomputed and checked against the actual source by tools/frontend_assets.py.
+regexes = ['''^\s*"frontend/src/api\.ts": "877f6d4469ca38c44b03c58c7acf79291468f21eec80a565513c09c8516af26d",\s*$''']

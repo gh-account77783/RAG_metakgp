@@ -1,0 +1,4 @@
+frontend/** text eol=lf
+assets/web/** text eol=lf
+# Retained upstream license texts include their original whitespace.
+assets/web/THIRD_PARTY_NOTICES.txt -whitespace

@@ -5,7 +5,7 @@ from importlib.resources import files
 from pathlib import Path
 
 
-ASSET_NAMES = ("graphmind.css", "graphmind.js")
+ASSET_NAMES = ("graphmind.css", "graphmind.js", "THIRD_PARTY_NOTICES.txt")
 
 
 def read_asset(name: str) -> str:
@@ -24,3 +24,4 @@ def read_asset(name: str) -> str:
 
 CSS = read_asset("graphmind.css")
 JAVASCRIPT = read_asset("graphmind.js")
+NOTICES = read_asset("THIRD_PARTY_NOTICES.txt")

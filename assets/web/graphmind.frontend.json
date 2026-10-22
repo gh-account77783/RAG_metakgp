@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "node": "v24.22.1",
+  "format": "static-iife",
+  "sources": {
+    "frontend/package.json": "dc8a46d314684a0c9f393faabe3ecf64fb92fc38130ee6b858d21b31fc069777",
+    "frontend/package-lock.json": "035f903232089dff05a739ee083032dc610f8e35feb05c56fd1a67c8cd393829",
+    "frontend/tsconfig.json": "09ebb1ceed436c57d21bd57ea966e2d0065e38d14c0f8aa17011037d4d73097d",
+    "frontend/vite.config.mjs": "9091056a6f870d7465efc77940e8616cd75c887fccb884873e3fc790e862919f",
+    "frontend/src/api.ts": "877f6d4469ca38c44b03c58c7acf79291468f21eec80a565513c09c8516af26d",
+    "frontend/src/components.tsx": "01c30e049a7627bdcbed5d49d565ec467c678545f23d43e2e2ade434bdd53fdf",
+    "frontend/src/main.tsx": "47be5c53f1f43684d807bf765cc0145e57de6b64e7c9e8df192b6090ff92a543",
+    "frontend/src/types.ts": "fe6c01ae20a6aa971b0aedbc89947f725724484ef675799466fb9f60ec911dd4",
+    "frontend/src/style.css": "345f61719a24531cbe81ca759cbb47aa5c9aa3fb82adcd77247a2797e1884ed6",
+    "frontend/src/assets.d.ts": "35d26ea66c86da9701e4f4b467913481ffeae910761cea34c775c5dacb7f8eaa"
+  },
+  "assets": {
+    "graphmind.js": "c9093fca7d2fdff14be4b7108c133f8c9cd308615669e39a793935b341763500",
+    "graphmind.css": "0bd42ac0124bc74a6dbb075ec8429ccd1e3ba1b1e94b6f6c184952ed38afc7a0",
+    "THIRD_PARTY_NOTICES.txt": "d4132a6199348a4007be4a54f24714d4e5e93fb9484e0fe020e29748ffe7084c"
+  },
+  "packages": [
+    {
+      "name": "@oxc-project/types",
+      "version": "0.155.0",
+      "license": "MIT"
+    },
+    {
+      "name": "@rolldown/binding-linux-x64-gnu",
+      "version": "1.2.15",
+      "license": "MIT"
+    },
+    {
+      "name": "@rolldown/pluginutils",
+      "version": "1.0.1",
+      "license": "MIT"
+    },
+    {
+      "name": "@types/react",
+      "version": "19.3.0",
+      "license": "MIT"
+    },
+    {
+      "name": "@types/react-dom",
+      "version": "19.3.0",
+      "license": "MIT"
+    },
+    {
+      "name": "@typescript/typescript-linux-x64",
+      "version": "7.0.2",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "csstype",
+      "version": "3.2.3",
+      "license": "MIT"
+    },
+    {
+      "name": "detect-libc",
+      "version": "2.1.2",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "fdir",
+      "version": "6.5.0",
+      "license": "MIT"
+    },
+    {
+      "name": "lightningcss",
+      "version": "1.33.0",
+      "license": "MPL-2.0"
+    },
+    {
+      "name": "lightningcss-linux-x64-gnu",
+      "version": "1.33.0",
+      "license": "MPL-2.0"
+    },
+    {
+      "name": "nanoid",
+      "version": "3.3.20",
+      "license": "MIT"
+    },
+    {
+      "name": "picocolors",
+      "version": "1.1.1",
+      "license": "ISC"
+    },
+    {
+      "name": "picomatch",
+      "version": "4.0.7",
+      "license": "MIT"
+    },
+    {
+      "name": "postcss",
+      "version": "8.5.31",
+      "license": "MIT"
+    },
+    {
+      "name": "react",
+      "version": "19.3.1",
+      "license": "MIT"
+    },
+    {
+      "name": "react-dom",
+      "version": "19.3.1",
+      "license": "MIT"
+    },
+    {
+      "name": "rolldown",
+      "version": "1.2.15",
+      "license": "MIT"
+    },
+    {
+      "name": "scheduler",
+      "version": "0.28.0",
+      "license": "MIT"
+    },
+    {
+      "name": "source-map-js",
+      "version": "1.2.2",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "tinyglobby",
+      "version": "0.2.17",
+      "license": "MIT"
+    },
+    {
+      "name": "typescript",
+      "version": "7.0.2",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "vite",
+      "version": "8.3.5",
+      "license": "MIT"
+    }
+  ]
+}

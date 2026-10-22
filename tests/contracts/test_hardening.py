@@ -27,7 +27,7 @@ from graphmind.errors import (
 )
 from graphmind.http_client import HttpUnavailableError
 from graphmind.identity import KeycloakAdminClient, KeycloakAuthority, KeycloakIdTokenValidator, UrllibIdentityTransport, new_browser_flow
-from graphmind.product_server import BoundedReadiness, JAVASCRIPT, create_product_server
+from graphmind.product_server import BoundedReadiness, create_product_server
 from graphmind.providers import OllamaProvider
 from graphmind.reader import ReaderService
 from tests.support.identity import FakeApplication, FakeAuthority, FakeTransport, identity_settings
@@ -354,32 +354,11 @@ class ProviderReadinessTests(unittest.TestCase):
 
 
 class BrowserScriptTests(unittest.TestCase):
-    @unittest.skipUnless(shutil.which("node"), "Node is required for executable browser-script fault regression")
-    def test_script_network_json_failures_and_resume_exit_waiting_state(self):
-        harness = r'''
-const vm=require('node:vm'),assert=require('node:assert/strict');
-async function scenario(kind){
-  let handler,renewed=false;const status={textContent:''},button={disabled:false};
-  const elements={'status':status,'answer':{textContent:''},'citations':{replaceChildren(){},append(){}},
-    'question':{value:'question'},'ask-form':{addEventListener(_,h){handler=h}}};
-  if(kind==='resume')elements.resume={dataset:{returnTo:'/documents/opaque?version_id=active'}};
-  const document={cookie:'graphmind_csrf=test',getElementById:id=>elements[id],createElement:()=>({append(){}})};
-  const location={replace(target){assert.equal(target,'/documents/opaque?version_id=active');renewed=true}};
-  const fetch=async()=>{if(kind==='network')throw Error('offline');
-    if(kind==='json')return {status:200,ok:true,json:async()=>{throw Error('bad JSON')}};
-    if(kind==='error')return {status:503,ok:false,json:async()=>({message:'Service unavailable'})};
-    if(kind==='resume')return {status:200,ok:true};
-    return {status:200,ok:true,json:async()=>({outcome:'error',answer:'not an abstention'})};};
-  vm.runInNewContext(process.argv[1],{document,location,fetch,decodeURIComponent,encodeURIComponent,Error});
-  if(kind==='resume'){await new Promise(r=>setImmediate(r));assert.equal(renewed,true);return;}
-  await handler({preventDefault(){},currentTarget:{querySelector(){return button}}});
-  assert.equal(button.disabled,false);assert.notEqual(status.textContent,'Working…');
-  assert.notEqual(status.textContent,'No supported answer');
-}
-(async()=>{for(const kind of ['network','json','error','invalid','resume'])await scenario(kind)})().catch(e=>{console.error(e);process.exit(1)});
-'''
-        result = subprocess.run([shutil.which("node"), "-e", harness, JAVASCRIPT], capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode, 0, result.stderr)
+    @unittest.skipUnless(shutil.which("node"), "Node is required for executable browser-client fault regression")
+    def test_frontend_client_auth_refresh_failure_and_cancellation_contracts(self):
+        result = subprocess.run([shutil.which("node"), "--test", str(REPOSITORY / "frontend/tests/api.test.mjs")],
+                                cwd=REPOSITORY, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
 
 
 if __name__ == "__main__":

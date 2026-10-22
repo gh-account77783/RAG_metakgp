@@ -41,6 +41,11 @@ BUILD_FILES = (
 OPERATOR_FILES = BUILD_FILES[3:]
 BUILD_FILES += (
     "tools/build_assets.py", "assets/web/graphmind.css", "assets/web/graphmind.js",
+    "tools/frontend_assets.py", "assets/web/THIRD_PARTY_NOTICES.txt", "assets/web/graphmind.frontend.json",
+    "frontend/package.json", "frontend/package-lock.json", "frontend/tsconfig.json", "frontend/vite.config.mjs",
+    "frontend/src/api.ts", "frontend/src/components.tsx", "frontend/src/main.tsx", "frontend/src/types.ts",
+    "frontend/src/style.css", "frontend/src/assets.d.ts", "frontend/tests/api.test.mjs",
+    "frontend/README.md", "frontend/.gitignore",
 )
 
 
@@ -61,6 +66,9 @@ def inspect_archive(path: Path) -> None:
             "graphmind/rag/components/contracts.py", "graphmind/rag/components/pipeline.py",
             "graphmind/rag/components/vector_store.py", "graphmind/web/assets.py",
             "graphmind/web/static/graphmind.css", "graphmind/web/static/graphmind.js",
+            "graphmind/web/static/THIRD_PARTY_NOTICES.txt", "graphmind/web/static/graphmind.frontend.json",
+            "graphmind/rag/tree_navigation/engine.py", "graphmind/rag/multimodal/engine.py",
+            "graphmind/rag/components/pdf_pages.py",
         ):
             if required not in names:
                 raise RuntimeError(f"Wheel omitted required module: {required}")

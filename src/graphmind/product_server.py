@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import hashlib
 import json
 import logging
 import secrets
@@ -36,13 +37,16 @@ from .identity import (
     new_browser_flow,
 )
 from .reader import ReaderService
-from .web.assets import CSS, JAVASCRIPT
+from .web.assets import CSS, JAVASCRIPT, NOTICES
 
 
 ACCESS_COOKIE = "graphmind_access"
 REFRESH_COOKIE = "graphmind_refresh"
 FLOW_COOKIE = "graphmind_oauth_flow"
 CSRF_COOKIE = "graphmind_csrf"
+ASSET_VERSION = hashlib.sha256((CSS + JAVASCRIPT).encode("utf-8")).hexdigest()[:16]
+CSS_URL = f"/assets/graphmind.css?v={ASSET_VERSION}"
+JAVASCRIPT_URL = f"/assets/graphmind.js?v={ASSET_VERSION}"
 
 
 class GraphMindTokenVerifier(TokenVerifier):
@@ -82,7 +86,8 @@ class ProductBoundary:
         path = scope.get("path", "")
         known = {"/", "/login", "/signup", "/auth/callback", "/auth/refresh", "/logout",
                  "/api/ask", "/api/search", "/api/catalog", "/health/live", "/health/ready", "/mcp",
-                 "/.well-known/oauth-protected-resource/mcp", "/assets/graphmind.js", "/assets/graphmind.css"}
+                 "/.well-known/oauth-protected-resource/mcp", "/assets/graphmind.js", "/assets/graphmind.css",
+                 "/assets/notices.txt"}
         route = path if path in known else "/documents/{document_id}" if path.startswith("/documents/") else "<unmatched>"
 
         async def safe_send(message):
@@ -117,7 +122,7 @@ def _security_headers(response: Response) -> Response:
     response.headers.setdefault(
         "Content-Security-Policy",
         "default-src 'self'; script-src 'self'; style-src 'self'; "
-        "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+        "img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
     )
     return response
 
@@ -157,9 +162,9 @@ def _clear_auth_cookies(response: Response, settings: Settings) -> None:
 
 
 def _login_page() -> str:
-    return """<!doctype html><html lang="en"><head><meta charset="utf-8">
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>GraphMind</title>
-<link rel="stylesheet" href="/assets/graphmind.css"></head><body><main>
+<link rel="stylesheet" href="{CSS_URL}"></head><body><main>
 <h1>GraphMind</h1><p>Sign in to search and ask questions over this installation's documents.</p>
 <p><a class="button" href="/login">Sign in</a> <a class="button secondary" href="/signup">Create account</a></p>
 </main></body></html>"""
@@ -169,12 +174,9 @@ def _chat_page(email: str) -> str:
     safe_email = html.escape(email, quote=True)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>GraphMind</title>
-<link rel="stylesheet" href="/assets/graphmind.css"></head><body><main>
-<header><h1>GraphMind</h1><p>Signed in as <strong>{safe_email}</strong></p></header>
-<form id="ask-form"><label for="question">Question</label><textarea id="question" maxlength="2000" required></textarea>
-<button type="submit">Ask</button> <button id="logout" type="button" class="secondary">Sign out</button></form>
-<p id="status" role="status"></p><section id="answer" aria-live="polite"></section>
-<h2>Sources</h2><ol id="citations"></ol></main><script src="/assets/graphmind.js" defer></script></body></html>"""
+<link rel="stylesheet" href="{CSS_URL}"></head><body>
+<div id="graphmind-root" data-email="{safe_email}"></div><noscript>Enable JavaScript to use the GraphMind reader.</noscript>
+<script src="{JAVASCRIPT_URL}" defer></script><footer><a href="/assets/notices.txt">Software notices</a></footer></body></html>"""
 
 
 
@@ -214,10 +216,10 @@ def _resume_page(request: Request, settings: Settings) -> Response:
     # navigates back to the exact local source URL without putting tokens in it.
     target = new_browser_flow(str(request.url.path) + ("?" + request.url.query if request.url.query else ""))["return_to"]
     body = f'''<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>GraphMind session</title><link rel="stylesheet" href="/assets/graphmind.css"></head><body>
+<title>GraphMind session</title><link rel="stylesheet" href="{CSS_URL}"></head><body>
 <main id="resume" data-return-to="{html.escape(target, quote=True)}"><h1>Renewing your session</h1>
 <p id="status" role="status">Working…</p><p><a href="/login">Sign in again</a></p></main>
-<script src="/assets/graphmind.js" defer></script></body></html>'''
+<script src="{JAVASCRIPT_URL}" defer></script></body></html>'''
     response = _security_headers(HTMLResponse(body))
     if not request.cookies.get(CSRF_COOKIE):
         response.set_cookie(CSRF_COOKIE, secrets.token_urlsafe(32), max_age=8 * 60 * 60,
@@ -394,7 +396,6 @@ def create_product_server(
             return result["content"]
         except (GraphMindError, ValueError) as exc:
             raise ToolError(getattr(exc, "code", "invalid_request")) from exc
-
 
     @server.tool(name="search_documents", structured_output=True)
     async def search_documents(query: str, limit: int = 8, engine_id: str = "graphmind",
@@ -607,7 +608,6 @@ def create_product_server(
             return await reader_work(reader.catalog, request=request)
         return await browser_operation(request, run)
 
-
     @server.custom_route("/api/ask", methods=["POST"])
     async def browser_ask(request: Request) -> Response:
         async def run(payload: dict[str, Any]):
@@ -691,7 +691,6 @@ def create_product_server(
     async def browser_page(request: Request) -> Response:
         return await browser_asset(request, page_number=request.path_params["page_number"])
 
-
     @server.custom_route("/health/live", methods=["GET"])
     async def live(_: Request) -> Response:
         return JSONResponse({"status": "live"})
@@ -725,6 +724,10 @@ def create_product_server(
             media_type="text/javascript",
             headers={"Cache-Control": "public, max-age=3600"},
         )
+
+    @server.custom_route("/assets/notices.txt", methods=["GET"])
+    async def software_notices(_: Request) -> Response:
+        return PlainTextResponse(NOTICES, headers={"Cache-Control": "public, max-age=3600"})
 
     app = server.streamable_http_app(
         streamable_http_path="/mcp",
