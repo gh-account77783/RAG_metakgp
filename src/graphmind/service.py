@@ -58,6 +58,7 @@ class GraphMindApplication:
         embedding: EmbeddingProvider | None = None,
         hybrid_vector: VectorStore | None = None,
         reranker=None,
+        visual_adapter=None,
         failure_injector=None,
     ) -> None:
         self.settings = settings
@@ -160,9 +161,16 @@ class GraphMindApplication:
                 max_context_chars=settings.answer_max_context_chars)
             self.ingestion.backends["tree_navigation"] = self.tree
             self.router.retrievers["tree_navigation"] = self.tree
+        self.visual = None
         if "multimodal" in settings.enabled_engines:
-            from .errors import EngineUnavailableError
-            raise EngineUnavailableError("The multimodal adapter is not implemented yet")
+            from .rag.multimodal.adapter import ColQwenAdapter
+            from .rag.multimodal.engine import VisualRetrieval
+            self.visual = VisualRetrieval(self.indexes, self.sources, self.artifacts,
+                visual_adapter or ColQwenAdapter(Path(settings.visual_model_dir), self.inference, settings.staging_dir,
+                                                 build_timeout=settings.visual_build_timeout_seconds),
+                self.inference, settings.staging_dir, max_question_chars=settings.max_question_chars)
+            self.ingestion.backends["multimodal"] = self.visual
+            self.router.retrievers["multimodal"] = self.visual
         self.answers = AnswerService(
             self.metadata,
             self.router,
@@ -178,37 +186,58 @@ class GraphMindApplication:
         return (*self._storage_readiness(), self.audit_manifest())
 
     def reader_readiness(self):
-        """Light dependency checks only; no per-document corpus traversal."""
-        statuses = self._storage_readiness()
-        if len(self.settings.enabled_engines) > 1:
-            graphmind = [item for item in statuses[1:] if item.name != "tree-layout"]
-            tree = next((item.available for item in statuses if item.name == "tree-layout"), False)
-            available = tree or (bool(graphmind) and all(item.available for item in graphmind))
-            return (statuses[0], AdapterStatus("rag-engines", available, "available" if available else "unavailable"),
-                    self.answers.provider.readiness())
-        return (*statuses, self.answers.provider.readiness())
+        """A missing optional engine does not disable another ready engine."""
+        available = False
+        for engine_id in ("tree_navigation", "multimodal", "graphmind"):
+            statuses = self.engine_readiness((engine_id,)).get(engine_id, ())
+            if statuses and all(item.available for item in statuses):
+                available = True
+                break
+        return (self.files.readiness(),
+                AdapterStatus("rag-engines", available, "available" if available else "unavailable"),
+                self.answers.provider.readiness())
 
-    def _storage_readiness(self):
-        statuses = [self.files.readiness()]
-        if "graphmind" in self.settings.enabled_engines:
-            statuses.extend((self.embedding.readiness(),
-                             (self.hybrid.vector if self.hybrid is not None else self.vector).readiness(),
-                             self.graph.readiness()))
-        if self.hybrid is not None and hasattr(self.hybrid.reranker, "readiness"):
-            statuses.append(self.hybrid.reranker.readiness())
-        if self.tree is not None:
+    def engine_readiness(self, engine_ids=None):
+        result = {}
+        selected = set(self.settings.enabled_engines if engine_ids is None else engine_ids)
+        if "graphmind" in selected and "graphmind" in self.settings.enabled_engines:
+            statuses = [self.embedding.readiness(),
+                        (self.hybrid.vector if self.hybrid is not None else self.vector).readiness(),
+                        self.graph.readiness()]
+            if self.hybrid is not None and hasattr(self.hybrid.reranker, "readiness"):
+                statuses.append(self.hybrid.reranker.readiness())
+            result["graphmind"] = statuses
+        if self.tree is not None and "tree_navigation" in selected:
             from importlib.metadata import PackageNotFoundError, version
             try:
                 available = version("pageindex") == "0.4.4"
             except PackageNotFoundError:
                 available = False
-            statuses.append(AdapterStatus("tree-layout", available, "ready" if available else "dependency missing"))
-        return tuple(statuses)
+            result["tree_navigation"] = [AdapterStatus("tree-layout", available,
+                "ready" if available else "dependency missing")]
+        if self.visual is not None and "multimodal" in selected:
+            try:
+                self.visual.adapter.identity()
+                available = True
+            except Exception:
+                available = False
+            provider = self.answers.provider
+            image_status = (provider.image_readiness() if hasattr(provider, "image_readiness") else
+                            AdapterStatus("image-input-provider", False, "provider does not support images"))
+            result["multimodal"] = [AdapterStatus("visual-model", available,
+                "configured" if available else "model missing or invalid"), image_status]
+        return result
+
+    def _storage_readiness(self):
+        return (self.files.readiness(), *(status for group in self.engine_readiness().values() for status in group))
 
     def audit_manifest(self) -> AdapterStatus:
         try:
             if self.tree is not None:
                 for index in self.indexes.current("tree_navigation"):
+                    self.artifacts.read(index)
+            if self.visual is not None:
+                for index in self.indexes.current("multimodal"):
                     self.artifacts.read(index)
             if self.hybrid is not None:
                 self.hybrid.audit()

@@ -58,6 +58,8 @@ _ENV_KEYS = {
     "GRAPHMIND_RETRIEVAL_PROFILE": "retrieval_profile",
     "GRAPHMIND_ENABLED_ENGINES": "enabled_engines",
     "GRAPHMIND_RERANKER_DIR": "reranker_dir",
+    "GRAPHMIND_VISUAL_MODEL_DIR": "visual_model_dir",
+    "GRAPHMIND_VISUAL_BUILD_TIMEOUT_SECONDS": "visual_build_timeout_seconds",
     "GRAPHMIND_RETRIEVAL_GRAPH_LIMIT": "retrieval_graph_limit",
     "GRAPHMIND_RETRIEVAL_GRAPH_SCOPE": "retrieval_graph_scope",
     "GRAPHMIND_RETRIEVAL_MAX_EVIDENCE": "retrieval_max_evidence",
@@ -180,6 +182,8 @@ class Settings:
     retrieval_profile: str = "legacy"
     enabled_engines: tuple[str, ...] = ("graphmind",)
     reranker_dir: str = ""
+    visual_model_dir: str = ""
+    visual_build_timeout_seconds: int = 900
     retrieval_graph_limit: int = 8
     retrieval_graph_scope: str = "chunk"
     retrieval_max_evidence: int = 12
@@ -270,6 +274,8 @@ class Settings:
         values["allowed_import_roots"] = _coerce_roots(values["allowed_import_roots"], base)
         if values.get("reranker_dir"):
             values["reranker_dir"] = str(_coerce_path(values["reranker_dir"], base))
+        if values.get("visual_model_dir"):
+            values["visual_model_dir"] = str(_coerce_path(values["visual_model_dir"], base))
         engines = values.get("enabled_engines", ("graphmind",))
         if isinstance(engines, str):
             engines = [value.strip() for value in engines.split(",") if value.strip()]
@@ -291,6 +297,7 @@ class Settings:
             "max_pdf_pages",
             "parser_timeout_seconds",
             "answer_timeout_seconds",
+            "visual_build_timeout_seconds",
             "answer_max_retries",
             "answer_max_context_chars",
             "answer_max_output_tokens",
@@ -425,6 +432,8 @@ class Settings:
             "::1",
         }:
             raise ConfigurationError("Ollama embeddings require a loopback embedding base URL")
+        if not 1 <= self.visual_build_timeout_seconds <= 1800:
+            raise ConfigurationError("visual_build_timeout_seconds must be between 1 and 1800")
         if self.answer_timeout_seconds < 1 or self.answer_max_retries not in range(0, 6):
             raise ConfigurationError("Answer timeout must be positive and retries must be between 0 and 5")
         if self.answer_max_context_chars < 1000 or self.answer_max_output_tokens < 1:
@@ -537,6 +546,8 @@ class Settings:
             "retrieval_profile": self.retrieval_profile,
             "enabled_engines": list(self.enabled_engines),
             "reranker_dir": self.reranker_dir,
+            "visual_model_dir": self.visual_model_dir,
+            "visual_build_timeout_seconds": self.visual_build_timeout_seconds,
             "max_file_bytes": self.max_file_bytes,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,

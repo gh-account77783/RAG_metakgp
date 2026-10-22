@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "dataset_id": "owned-pdf-engines-12-v1",
+  "scope": "Synthetic text-bearing PDF pages; freeze before inference. Visual answers are absent from extracted text.",
+  "cases": [
+    {
+      "id": "T01",
+      "engine": "tree_navigation",
+      "page": 1,
+      "question": "What is the intake semester for the Orion programme?",
+      "required_answer_terms": [
+        "Autumn"
+      ]
+    },
+    {
+      "id": "T02",
+      "engine": "tree_navigation",
+      "page": 2,
+      "question": "In what year did Dr Rowan join?",
+      "required_answer_terms": [
+        "2011"
+      ]
+    },
+    {
+      "id": "T03",
+      "engine": "tree_navigation",
+      "page": 3,
+      "question": "How many credits does the Vega workshop carry?",
+      "required_answer_terms": [
+        "3"
+      ]
+    },
+    {
+      "id": "T04",
+      "engine": "tree_navigation",
+      "page": 4,
+      "question": "Where is the Lyra office?",
+      "required_answer_terms": [
+        "Block C"
+      ]
+    },
+    {
+      "id": "T05",
+      "engine": "tree_navigation",
+      "page": 5,
+      "question": "After how many days must the Atlas permit be renewed?",
+      "required_answer_terms": [
+        "60"
+      ]
+    },
+    {
+      "id": "T06",
+      "engine": "tree_navigation",
+      "page": 6,
+      "question": "What is the minimum score for the Comet award?",
+      "required_answer_terms": [
+        "72"
+      ]
+    },
+    {
+      "id": "V01",
+      "engine": "multimodal",
+      "page": 1,
+      "question": "What color is the filled rectangle in Panel One?",
+      "required_answer_terms": [
+        "blue"
+      ]
+    },
+    {
+      "id": "V02",
+      "engine": "multimodal",
+      "page": 2,
+      "question": "Which region has the tallest bar in the Regional Output chart?",
+      "required_answer_terms": [
+        "South"
+      ]
+    },
+    {
+      "id": "V03",
+      "engine": "multimodal",
+      "page": 3,
+      "question": "What is the background color of the Arctic row in the Product Status table?",
+      "required_answer_terms": [
+        "green"
+      ]
+    },
+    {
+      "id": "V04",
+      "engine": "multimodal",
+      "page": 4,
+      "question": "How many circles are drawn in the Orbit Diagram?",
+      "required_answer_terms": [
+        "3"
+      ]
+    },
+    {
+      "id": "V05",
+      "engine": "multimodal",
+      "page": 5,
+      "question": "Does the line in the Annual Trend chart increase or decrease from 2024 to 2025?",
+      "required_answer_terms": [
+        "increase"
+      ]
+    },
+    {
+      "id": "V06",
+      "engine": "multimodal",
+      "page": 6,
+      "question": "Which shape is inside the Outer Frame in the Containment Figure?",
+      "required_answer_terms": [
+        "triangle"
+      ]
+    }
+  ]
+}

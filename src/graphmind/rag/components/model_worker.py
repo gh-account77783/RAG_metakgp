@@ -20,6 +20,9 @@ def run(request: dict) -> dict:
         return {"ok": True, "structure": result["structure"], "toc_source": result.get("toc_source")}
     import torch
     torch.set_num_threads(int(request["threads"]))
+    if request["operation"] in {"visual_build", "visual_rank"}:
+        from ..multimodal.adapter import visual_worker
+        return visual_worker(request)
     if request["operation"] == "rerank":
         from sentence_transformers import CrossEncoder
         directory = Path(request["model_dir"])

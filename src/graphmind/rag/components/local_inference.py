@@ -51,7 +51,10 @@ class LocalInference:
         self.timeout = timeout
         self.threads = threads
 
-    def run(self, operation: str, payload: dict) -> dict:
+    def run(self, operation: str, payload: dict, *, timeout: float | None = None) -> dict:
+        limit = self.timeout if timeout is None else timeout
+        if not 1 <= limit <= 1800:
+            raise ValueError("Local inference timeout must be between 1 and 1800 seconds")
         request = json.dumps({"operation": operation, "threads": self.threads, **payload}, allow_nan=False)
         if len(request.encode("utf-8")) > 4 * 1024 * 1024:
             raise DependencyUnavailableError("Local inference input exceeds its limit")
@@ -65,7 +68,7 @@ class LocalInference:
             try:
                 result = subprocess.run([sys.executable, "-B", "-m", "graphmind.rag.components.model_worker"],
                     input=request, text=True, encoding="utf-8", capture_output=True,
-                    timeout=self.timeout, check=False, env=environment)
+                    timeout=limit, check=False, env=environment)
                 if result.returncode or len(result.stdout) > 8 * 1024 * 1024:
                     raise ValueError("Worker failed")
                 output = json.loads(result.stdout)
