@@ -305,6 +305,16 @@ class OllamaProviderTests(unittest.TestCase):
                 transport=FakeTransport([]),
             ).answer("question", self.evidence())
 
+    def test_small_gemma_presets_bound_thinking_without_changing_other_models(self):
+        for model in ("gemma4:e2b", "gemma4:e4b"):
+            transport = FakeTransport([{"message": {"content":
+                '{"outcome":"answer","answer":"CERULEAN","citation_ids":["citation"]}'}}])
+            provider = OllamaProvider("http://127.0.0.1:11434", "", model,
+                mode="local", max_retries=0, transport=transport)
+            self.assertEqual(provider.answer("What is the code?", self.evidence()).answer, "CERULEAN")
+            self.assertIs(transport.calls[0]["payload"]["think"], False)
+            self.assertEqual(provider.identity()["thinking"], "disabled")
+
     def test_nonpreset_local_model_keeps_native_thinking_controls(self):
         transport = FakeTransport([{"message": {"content":
             '{"outcome":"answer","answer":"CERULEAN","citation_ids":["citation"]}'}}])

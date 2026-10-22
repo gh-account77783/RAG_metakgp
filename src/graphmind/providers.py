@@ -39,6 +39,9 @@ class AnswerProvider(Protocol):
     def readiness(self) -> AdapterStatus: ...
 
 
+BOUNDED_GEMMA_PRESETS = frozenset({"gemma4:e2b", "gemma4:e4b"})
+
+
 ANSWER_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -238,7 +241,7 @@ class OllamaProvider:
             {"role": "user", "content": user}], "stream": False,
             "format": schema if self.mode == "local" else "json",
             "options": {"temperature": 0, "num_predict": min(self.max_output_tokens, 128)}}
-        if self.mode == "local" and self.model == "gemma4:e2b":
+        if self.mode == "local" and self.model in BOUNDED_GEMMA_PRESETS:
             body["think"] = False
         output = self._request(body)
         try:
@@ -304,11 +307,11 @@ class OllamaProvider:
             "format": ANSWER_RESPONSE_SCHEMA if self.mode == "local" else "json",
             "options": {"temperature": 0, "num_predict": self.max_output_tokens},
         }
-        # The selected Gemma 4 E2B/Ollama preset otherwise spends the bounded
+        # The small Gemma 4/Ollama presets otherwise spend the bounded
         # output budget on message.thinking and can return no final JSON.
         # Request the final structured answer; never parse a reasoning trace or
         # enlarge the budget. Other models and hosted controls stay unchanged.
-        if self.mode == "local" and self.model == "gemma4:e2b":
+        if self.mode == "local" and self.model in BOUNDED_GEMMA_PRESETS:
             body["think"] = False
         if images:
             body["messages"][0]["content"] += (
@@ -368,6 +371,8 @@ class OllamaProvider:
         }
         if self.mode == "local":
             identity["context_tokens"] = self.local_context_tokens
+            if self.model in BOUNDED_GEMMA_PRESETS:
+                identity["thinking"] = "disabled"
         if not resolve:
             return identity
         try:
