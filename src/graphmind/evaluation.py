@@ -257,6 +257,7 @@ class EvaluationRunner:
             "retrieved_urls": sorted(retrieved_urls),
             "graph_retrieved_urls": sorted(graph_urls),
             "cited_urls": sorted(cited_urls),
+            "cited_evidence": [{**item.as_dict(), "url": self._url(item)} for item in result.citations],
             "source_recall": source_recall,
             "graph_target_recalled": target_urls <= graph_urls if target_urls else None,
             "retrieval_pass": retrieval_pass,
@@ -331,6 +332,7 @@ class EvaluationRunner:
         )
         report = {
             "schema_version": 1,
+            "manual_support_review_required": True,
             "dataset_id": self.dataset.dataset_id,
             "materialization_sha256": self.materialized.materialization_sha256,
             "label": self.label,

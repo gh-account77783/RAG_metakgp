@@ -584,7 +584,8 @@ class EvaluationTests(unittest.TestCase):
             url_to_filename={source_url: "source.md", target_url: "target.md"},
         )
         evidence = (
-            Evidence("s", "sd", "sv", "source.md", "line 1", "course link", "vector", 1),
+            Evidence("s", "sd", "sv", "source.md", "line 1", "course link", "vector", 1,
+                     page_number=1, image_base64="owned-image-bytes"),
             Evidence("t", "td", "tv", "target.md", "line 1", "joined 2009", "vector", 0.9),
         )
         result = QueryResult(
@@ -597,7 +598,8 @@ class EvaluationTests(unittest.TestCase):
 
         class Answers:
             def query_with_evidence(self, question):
-                return result, evidence
+                return result, evidence + (Evidence("unused", "sd", "sv", "source.md", "line 9",
+                                                   "Unrelated passage.", "vector", 0.5),)
 
         class Dataset:
             dataset_id = "fixture"
@@ -626,6 +628,10 @@ class EvaluationTests(unittest.TestCase):
         self.assertTrue(scored["citation_pass"])
         self.assertFalse(scored["retrieval_pass"])
         self.assertFalse(scored["graph_target_recalled"])
+        self.assertEqual([item["citation_id"] for item in scored["cited_evidence"]], ["s", "t"])
+        self.assertEqual(scored["cited_evidence"][0]["excerpt"], "course link")
+        self.assertEqual(scored["cited_evidence"][0]["url"], source_url)
+        self.assertNotIn("owned-image-bytes", json.dumps(scored))
 
     def test_abstention_retrieval_is_not_scored_as_a_retrieval_pass(self):
         materialized = MaterializedEvaluation(
