@@ -57,5 +57,5 @@ build_py = "tools.build_assets.BuildPy"
 "share/graphmind/deploy/keycloak/themes/graphmind/email" = ["deploy/keycloak/themes/graphmind/email/theme.properties"]
 "share/graphmind/deploy/keycloak/themes/graphmind/email/messages" = ["deploy/keycloak/themes/graphmind/email/messages/messages_en.properties"]
 "share/graphmind/deploy/acceptance" = ["deploy/acceptance/README.md"]
-"share/graphmind/deploy/native" = ["deploy/native/README.md", "deploy/native/ubuntu.example.json"]
-"share/graphmind/tools" = ["tools/run_real_acceptance.py", "tools/mcp_acceptance.py", "tools/build_keycloak_recovery.py", "tools/ubuntu_service_files.py"]
+"share/graphmind/deploy/native" = ["deploy/native/README.md", "deploy/native/ubuntu.example.json", "deploy/native/ubuntu.backends.example.json"]
+"share/graphmind/tools" = ["tools/run_real_acceptance.py", "tools/mcp_acceptance.py", "tools/build_keycloak_recovery.py", "tools/ubuntu_service_files.py", "tools/ubuntu_backend_files.py"]
