@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "name": "graphmind-example",
+  "user": "graphmind",
+  "python": "/opt/graphmind/releases/example/bin/python",
+  "chroma": "/opt/graphmind/releases/example/bin/chroma",
+  "ollama": "/opt/graphmind/native/ollama/bin/ollama",
+  "config": "/etc/graphmind/reader.toml",
+  "dotenv": "/etc/graphmind/reader.env",
+  "data_dir": "/var/lib/graphmind/data",
+  "model_dir": "/var/lib/graphmind/models",
+  "ollama_home": "/var/lib/graphmind/ollama-home",
+  "reader_port": 19800,
+  "chroma_port": 19801,
+  "ollama_port": 19434,
+  "cpu_quota_percent": 200,
+  "reader_memory_bytes": 6442450944,
+  "worker_memory_bytes": 6442450944,
+  "chroma_memory_bytes": 1073741824,
+  "ollama_memory_bytes": 10737418240
+}

@@ -28,6 +28,7 @@ BUILD_FILES = (
     "deploy/keycloak/README.md", "deploy/keycloak/graphmind-realm.template.json",
     "deploy/keycloak/graphmind-user-profile.json", "deploy/acceptance/README.md",
     "tools/run_real_acceptance.py", "tools/mcp_acceptance.py",
+    "tools/ubuntu_service_files.py", "deploy/native/README.md", "deploy/native/ubuntu.example.json",
     "tools/build_keycloak_recovery.py", "deploy/keycloak/graphmind-recovery.json",
     "deploy/keycloak/nginx-recovery.conf.example",
     "deploy/keycloak/themes/graphmind/email/theme.properties",
