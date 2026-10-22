@@ -81,7 +81,7 @@ class ProductBoundary:
             return await self.app(scope, receive, send)
         path = scope.get("path", "")
         known = {"/", "/login", "/signup", "/auth/callback", "/auth/refresh", "/logout",
-                 "/api/ask", "/api/search", "/health/live", "/health/ready", "/mcp",
+                 "/api/ask", "/api/search", "/api/catalog", "/health/live", "/health/ready", "/mcp",
                  "/.well-known/oauth-protected-resource/mcp", "/assets/graphmind.js", "/assets/graphmind.css"}
         route = path if path in known else "/documents/{document_id}" if path.startswith("/documents/") else "<unmatched>"
 
@@ -373,6 +373,29 @@ def create_product_server(
         reader.validate_result(result)
         return result
 
+    @server.tool(name="list_documents", structured_output=True)
+    async def list_documents() -> dict[str, Any]:
+        """List configured engines and active documents with their index readiness."""
+        token, _ = await mcp_token()
+        try:
+            return await checked_result(token, reader.catalog)
+        except (GraphMindError, ValueError) as exc:
+            raise ToolError(getattr(exc, "code", "invalid_request")) from exc
+
+    @server.resource(
+        "graphmind://documents/{document_id}/versions/{version_id}/pages/{page_number}",
+        name="original-pdf-page", mime_type="image/png",
+    )
+    async def original_pdf_page(document_id: str, version_id: str, page_number: int) -> bytes:
+        token, _ = await mcp_token()
+        try:
+            result = await checked_result(token, reader.fetch_asset, document_id,
+                                          version_id=version_id, page_number=page_number)
+            return result["content"]
+        except (GraphMindError, ValueError) as exc:
+            raise ToolError(getattr(exc, "code", "invalid_request")) from exc
+
+
     @server.tool(name="search_documents", structured_output=True)
     async def search_documents(query: str, limit: int = 8, engine_id: str = "graphmind",
                                document_ids: list[str] | None = None) -> dict[str, Any]:
@@ -578,6 +601,13 @@ def create_product_server(
 
         return await browser_operation(request, run)
 
+    @server.custom_route("/api/catalog", methods=["POST"])
+    async def browser_catalog(request: Request) -> Response:
+        async def run(payload):
+            return await reader_work(reader.catalog, request=request)
+        return await browser_operation(request, run)
+
+
     @server.custom_route("/api/ask", methods=["POST"])
     async def browser_ask(request: Request) -> Response:
         async def run(payload: dict[str, Any]):
@@ -622,6 +652,45 @@ def create_product_server(
             return _query_error(exc)
         except ValueError:
             return _error(400, "invalid_request", "Request was rejected")
+
+    async def browser_asset(request: Request, *, page_number: int | None = None) -> Response:
+        try:
+            authenticated = await _browser_principal(request, selected_authority)
+            if authenticated is None:
+                return _error(401, "authentication_required", "Sign in again")
+            token, _ = authenticated
+            result = await reader_work(reader.fetch_asset, request.path_params["document_id"],
+                version_id=request.query_params.get("version_id"), page_number=page_number, request=request)
+            if not await _still_authorized(token, selected_authority):
+                return _error(401, "authorization_revoked", "Account access was revoked")
+            reader.validate_result(result)
+            response = Response(result["content"], media_type=result["media_type"])
+            if result["attachment"]:
+                from urllib.parse import quote
+                response.headers["Content-Disposition"] = (
+                    "attachment; filename=document; filename*=UTF-8''" + quote(result["display_name"], safe=""))
+            return _security_headers(response)
+        except IdentityError:
+            return _error(503, "identity_unavailable", "Identity service is unavailable")
+        except DocumentNotFoundError:
+            return _error(404, "document_not_found", "Document is unavailable")
+        except QueryCapacityError:
+            return _error(503, "query_capacity_exceeded", "Reader capacity is full; retry")
+        except RetryableQueryError:
+            return _error(409, "retryable_query_error", "Document version changed; retry")
+        except GraphMindError as exc:
+            return _query_error(exc)
+        except ValueError:
+            return _error(400, "invalid_request", "Request was rejected")
+
+    @server.custom_route("/documents/{document_id}/original", methods=["GET"])
+    async def browser_original(request: Request) -> Response:
+        return await browser_asset(request)
+
+    @server.custom_route("/documents/{document_id}/pages/{page_number:int}", methods=["GET"])
+    async def browser_page(request: Request) -> Response:
+        return await browser_asset(request, page_number=request.path_params["page_number"])
+
 
     @server.custom_route("/health/live", methods=["GET"])
     async def live(_: Request) -> Response:

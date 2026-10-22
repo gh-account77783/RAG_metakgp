@@ -25,7 +25,7 @@ async def run(url: str, question: str) -> None:
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 tools = await session.list_tools()
-                if {item.name for item in tools.tools} != {"search_documents", "fetch_document", "ask"}:
+                if {item.name for item in tools.tools} != {"search_documents", "fetch_document", "ask", "list_documents"}:
                     raise RuntimeError("Unexpected tool contract")
                 found = await session.call_tool("search_documents", {"query": question})
                 if found.is_error or not found.structured_content:

@@ -253,10 +253,12 @@ class BrowserAndMCPContractTests(unittest.TestCase):
 
     def test_mcp_discovery_denial_and_portable_contracts(self) -> None:
         tool_names = {item.name for item in asyncio.run(self.server.list_tools())}
-        self.assertEqual(tool_names, {"search_documents", "fetch_document", "ask"})
+        self.assertEqual(tool_names, {"search_documents", "fetch_document", "ask", "list_documents"})
         templates = asyncio.run(self.server.list_resource_templates())
-        self.assertEqual(len(templates), 1)
-        self.assertEqual(str(templates[0].uri_template), "graphmind://documents/{document_id}")
+        self.assertEqual({str(item.uri_template) for item in templates}, {
+            "graphmind://documents/{document_id}",
+            "graphmind://documents/{document_id}/versions/{version_id}/pages/{page_number}",
+        })
 
         with TestClient(self.app, base_url=self.settings.public_base_url) as client:
             denied = client.post(
@@ -314,7 +316,7 @@ class BrowserAndMCPContractTests(unittest.TestCase):
             )
             self.assertEqual(tools.status_code, 200, tools.text)
             listed = {item["name"] for item in tools.json()["result"]["tools"]}
-            self.assertEqual(listed, {"search_documents", "fetch_document", "ask"})
+            self.assertEqual(listed, {"search_documents", "fetch_document", "ask", "list_documents"})
 
             called = client.post(
                 "/mcp",
