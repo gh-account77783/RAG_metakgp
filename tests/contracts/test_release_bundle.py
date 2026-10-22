@@ -89,8 +89,8 @@ class ReleaseBundleTests(unittest.TestCase):
             install(self.bundle, environment)
         candidate = self.bundle / "candidate"
         collect(candidate, next((self.bundle / "wheelhouse").glob("*.whl")))
-        with patch("tools.release_bundle.venv.EnvBuilder"), patch(
-                "tools.release_bundle.subprocess.run", side_effect=subprocess.CalledProcessError(1, "pip")):
+        with patch("tools.bundle_installer.venv.EnvBuilder"), patch(
+                "tools.bundle_installer.subprocess.run", side_effect=subprocess.CalledProcessError(1, "pip")):
             with self.assertRaises(subprocess.CalledProcessError):
                 install(candidate, environment)
         self.assertTrue((environment / "bundle-install.log").exists())

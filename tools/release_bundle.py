@@ -3,15 +3,11 @@ from __future__ import annotations
 
 import argparse
 from email.parser import BytesParser
-import hashlib
 import json
-import os
 from pathlib import Path
 import platform
 import subprocess
 import sys
-import sysconfig
-import venv
 import zipfile
 
 from packaging.markers import default_environment
@@ -20,26 +16,13 @@ from packaging.specifiers import SpecifierSet
 from packaging.tags import sys_tags
 from packaging.utils import canonicalize_name, parse_wheel_filename
 
+try:
+    from tools.bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer
+except ModuleNotFoundError:
+    from bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer
+
 
 PROJECT = "graphmind-rag-mcp"
-
-
-def pip_environment() -> dict[str, str]:
-    environment = {key: value for key, value in os.environ.items()
-                   if key not in {"PYTHONPATH", "PYTHONHOME", "PYTHONUSERBASE"}}
-    environment["PYTHONNOUSERSITE"] = "1"
-    return environment
-
-
-def digest(path: Path) -> str:
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
-
-
-def native_target() -> dict[str, str]:
-    return {"implementation": platform.python_implementation(),
-            "python": f"{sys.version_info.major}.{sys.version_info.minor}",
-            "platform": sysconfig.get_platform()}
 
 
 def wheel_record(path: Path) -> dict:
@@ -116,11 +99,6 @@ def validate_closure(records: list[dict], extras: list[str]) -> None:
             pending.append((dependency, tuple(sorted(requirement.extras))))
 
 
-def lock_text(records: list[dict]) -> str:
-    return "".join(f"{item['name']}=={item['version']} --hash=sha256:{item['sha256']}\n"
-                   for item in records)
-
-
 def _notice_files(bundle: Path, records: list[dict]) -> dict[str, str]:
     notices = {}
     for record in records:
@@ -143,7 +121,7 @@ def _notice_files(bundle: Path, records: list[dict]) -> dict[str, str]:
 
 def freeze(bundle: Path, *, extras: list[str] | None = None, provenance: dict | None = None) -> dict:
     bundle = bundle.resolve()
-    if (bundle / "manifest.json").exists() or (bundle / "requirements.lock").exists():
+    if any((bundle/name).exists() for name in ('manifest.json','requirements.lock','install_bundle.py')):
         raise ValueError("Preserve the existing bundle; use a fresh directory")
     selected = sorted({canonicalize_name(value) for value in extras or []})
     records = records_for(bundle)
@@ -151,9 +129,12 @@ def freeze(bundle: Path, *, extras: list[str] | None = None, provenance: dict | 
     notices = _notice_files(bundle, records)
     lock = bundle / "requirements.lock"
     lock.write_bytes(lock_text(records).encode("utf-8"))
+    installer=bundle/'install_bundle.py'
+    installer.write_bytes(Path(__file__).with_name('bundle_installer.py').read_bytes())
     manifest = {"schema_version": 1, "target": native_target(), "extras": selected,
                 "wheels": records, "lock_sha256": digest(lock), "notices": notices,
-                "provenance": provenance or {}, "rights_disposition": "requires review"}
+                "provenance": provenance or {}, "rights_disposition": "requires review",
+                "installer": {"filename":installer.name,"sha256":digest(installer)}}
     # The manifest is the final completion record; partial downloads are never a bundle.
     (bundle / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
@@ -179,6 +160,7 @@ def verify(bundle: Path) -> dict:
             raise ValueError("Unsafe notice path")
         if digest(target) != expected:
             raise ValueError("Upstream notice bytes changed")
+    verify_installer(bundle,manifest)
     return manifest
 
 
@@ -221,28 +203,7 @@ def collect(bundle: Path, project_wheel: Path, *, constraints=(), extras=(), art
 
 def install(bundle: Path, environment: Path) -> dict:
     """Install a verified bundle into a new venv, offline and with mandatory hashes."""
-    bundle, environment = bundle.resolve(), environment.resolve()
-    manifest = verify(bundle)
-    if environment.exists() or environment.is_relative_to(bundle) or bundle.is_relative_to(environment):
-        raise ValueError("Installation requires a new environment outside the bundle")
-    environment.parent.mkdir(parents=True, exist_ok=True)
-    # Reserve the target before invoking venv; never reuse an unrelated environment.
-    environment.mkdir()
-    venv.EnvBuilder(with_pip=True).create(environment)
-    executable = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
-    with (environment / "bundle-install.log").open("wb") as log:
-        subprocess.run([str(executable), "-m", "pip", "--isolated", "--disable-pip-version-check",
-                        "install", "--no-index", "--no-compile", "--only-binary=:all:", "--find-links",
-                        str(bundle / "wheelhouse"), "--require-hashes", "-r",
-                        str(bundle / "requirements.lock")], stdout=log, stderr=subprocess.STDOUT,
-                       check=True, env=pip_environment())
-        subprocess.run([str(executable), "-m", "pip", "--isolated", "check"],
-                       stdout=log, stderr=subprocess.STDOUT, check=True, env=pip_environment())
-    receipt = {"manifest_sha256": digest(bundle / "manifest.json"), "target": manifest["target"],
-               "wheels": len(manifest["wheels"]), "offline_install": True, "pip_check": True}
-    # Receipt exists only after both mandatory commands succeed; keep failed logs.
-    (environment / "bundle-install.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
-    return receipt
+    return install_verified(bundle,environment,verify(bundle))
 
 
 def main(argv=None) -> None:
@@ -280,7 +241,8 @@ def main(argv=None) -> None:
         parser.exit(2, f"Bundle {args.command} failed ({type(exc).__name__}): {exc}\n")
     print(json.dumps({"target": manifest["target"], "wheels": len(manifest["wheels"]),
                       "extras": manifest["extras"], "rights_disposition": manifest["rights_disposition"],
-                      "manifest_sha256": digest(args.bundle / "manifest.json")}, indent=2))
+                      "manifest_sha256": digest(args.bundle / "manifest.json"),
+                      "installer": manifest.get('installer')}, indent=2))
 
 
 if __name__ == "__main__":
