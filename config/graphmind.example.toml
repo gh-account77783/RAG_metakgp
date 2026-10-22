@@ -30,6 +30,7 @@ ollama_base_url = "http://127.0.0.1:11434"
 answer_timeout_seconds = 120
 answer_max_retries = 1
 answer_max_context_chars = 24000
+answer_local_context_tokens = 16384 # Ollama local context allocation; hosted providers keep their own setting.
 answer_max_output_tokens = 512
 retrieval_seed_limit = 4
 retrieval_profile = "legacy"

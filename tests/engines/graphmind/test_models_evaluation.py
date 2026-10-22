@@ -124,6 +124,9 @@ class P4ConfigurationTests(unittest.TestCase):
                 make_settings(root, retrieval_seed_limit=5, retrieval_max_evidence=4)
             with self.assertRaisesRegex(ConfigurationError, "max_queued_queries"):
                 make_settings(root, max_queued_queries=-1)
+            for context in (1023, 32769):
+                with self.assertRaisesRegex(ConfigurationError, "answer_local_context_tokens"):
+                    make_settings(root, answer_local_context_tokens=context)
 
 
 class OllamaEmbeddingTests(unittest.TestCase):
@@ -256,6 +259,8 @@ class OllamaProviderTests(unittest.TestCase):
         self.assertNotIn("Authorization", transport.calls[0]["headers"])
         local_request = transport.calls[0]["payload"]
         self.assertIs(local_request["think"], False)
+        self.assertEqual(local_request["options"]["num_ctx"], 16384)
+        self.assertEqual(provider.identity()["context_tokens"], 16384)
         self.assertIsInstance(local_request["format"], dict)
         self.assertEqual(
             local_request["format"]["properties"]["outcome"]["enum"],
@@ -286,6 +291,7 @@ class OllamaProviderTests(unittest.TestCase):
         )
         self.assertEqual(hosted_transport.calls[0]["payload"]["format"], "json")
         self.assertNotIn("think", hosted_transport.calls[0]["payload"])
+        self.assertNotIn("num_ctx", hosted_transport.calls[0]["payload"]["options"])
         self.assertEqual(
             hosted_transport.calls[0]["headers"]["Authorization"], "Bearer secret"
         )

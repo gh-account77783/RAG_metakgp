@@ -93,6 +93,7 @@ class OllamaProvider:
         retry_backoff: float = 0.25,
         max_context_chars: int = 24_000,
         max_output_tokens: int = 512,
+        local_context_tokens: int = 16_384,
         transport: JsonTransport | None = None,
         sleep: Callable[[float], None] = time.sleep,
         inference_lock: Path | None = None,
@@ -106,6 +107,7 @@ class OllamaProvider:
         self.retry_backoff = retry_backoff
         self.max_context_chars = max_context_chars
         self.max_output_tokens = max_output_tokens
+        self.local_context_tokens = local_context_tokens
         self.transport = transport or UrllibJsonTransport()
         self.sleep = sleep
         self.call_count = 0
@@ -168,6 +170,8 @@ class OllamaProvider:
         return payload
 
     def _request(self, body: dict[str, Any]) -> dict[str, Any]:
+        if self.mode == "local":
+            body = {**body, "options": {**body.get("options", {}), "num_ctx": self.local_context_tokens}}
         lock = self.inference_lock if self.mode == "local" else None
         with (exclusive_file_lock(lock) if lock is not None else nullcontext(True)) as acquired:
             if not acquired:
@@ -322,6 +326,8 @@ class OllamaProvider:
             "max_context_chars": self.max_context_chars,
             "max_output_tokens": self.max_output_tokens,
         }
+        if self.mode == "local":
+            identity["context_tokens"] = self.local_context_tokens
         if not resolve:
             return identity
         try:

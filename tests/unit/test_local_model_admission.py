@@ -26,6 +26,7 @@ class LocalModelAdmissionTests(unittest.TestCase):
         self.assertEqual(provider.select_nodes("What is the interval?", candidates), ["section1"])
         self.assertEqual(transport.requests[0][2]["format"]["properties"]["node_ids"]["maxItems"], 2)
         self.assertIs(transport.requests[0][2]["think"], False)
+        self.assertEqual(transport.requests[0][2]["options"]["num_ctx"], 16384)
         transport.content = '{"node_ids":["invented"]}'
         with self.assertRaises(ProviderResponseError):
             provider.select_nodes("What is the interval?", candidates)

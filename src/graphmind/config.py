@@ -53,6 +53,7 @@ _ENV_KEYS = {
     "GRAPHMIND_ANSWER_MAX_RETRIES": "answer_max_retries",
     "GRAPHMIND_ANSWER_MAX_CONTEXT_CHARS": "answer_max_context_chars",
     "GRAPHMIND_ANSWER_MAX_OUTPUT_TOKENS": "answer_max_output_tokens",
+    "GRAPHMIND_ANSWER_LOCAL_CONTEXT_TOKENS": "answer_local_context_tokens",
     "GRAPHMIND_RETRIEVAL_SEED_LIMIT": "retrieval_seed_limit",
     "GRAPHMIND_RETRIEVAL_PROFILE": "retrieval_profile",
     "GRAPHMIND_ENABLED_ENGINES": "enabled_engines",
@@ -174,6 +175,7 @@ class Settings:
     answer_max_retries: int = 2
     answer_max_context_chars: int = 24_000
     answer_max_output_tokens: int = 512
+    answer_local_context_tokens: int = 16_384
     retrieval_seed_limit: int = 4
     retrieval_profile: str = "legacy"
     enabled_engines: tuple[str, ...] = ("graphmind",)
@@ -292,6 +294,7 @@ class Settings:
             "answer_max_retries",
             "answer_max_context_chars",
             "answer_max_output_tokens",
+            "answer_local_context_tokens",
             "retrieval_seed_limit",
             "retrieval_graph_limit",
             "retrieval_max_evidence",
@@ -426,6 +429,8 @@ class Settings:
             raise ConfigurationError("Answer timeout must be positive and retries must be between 0 and 5")
         if self.answer_max_context_chars < 1000 or self.answer_max_output_tokens < 1:
             raise ConfigurationError("Answer context and output budgets are invalid")
+        if not 1024 <= self.answer_local_context_tokens <= 32_768:
+            raise ConfigurationError("answer_local_context_tokens must be between 1024 and 32768")
         if self.retrieval_seed_limit < 1 or self.retrieval_graph_limit < 0:
             raise ConfigurationError("Retrieval seed/graph limits are invalid")
         if self.retrieval_graph_scope not in {"chunk", "document"}:
@@ -564,6 +569,7 @@ class Settings:
             "answer_max_retries": self.answer_max_retries,
             "answer_max_context_chars": self.answer_max_context_chars,
             "answer_max_output_tokens": self.answer_max_output_tokens,
+            "answer_local_context_tokens": self.answer_local_context_tokens,
             "retrieval_seed_limit": self.retrieval_seed_limit,
             "retrieval_graph_limit": self.retrieval_graph_limit,
             "retrieval_graph_scope": self.retrieval_graph_scope,

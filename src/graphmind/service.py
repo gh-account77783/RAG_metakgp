@@ -147,6 +147,7 @@ class GraphMindApplication:
             max_retries=settings.answer_max_retries,
             max_context_chars=settings.answer_max_context_chars,
             max_output_tokens=settings.answer_max_output_tokens,
+            local_context_tokens=settings.answer_local_context_tokens,
             inference_lock=self.inference.lock_path if self.use_model_admission else None,
         )
         if self.use_model_admission and isinstance(selected_provider, OllamaProvider):
