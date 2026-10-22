@@ -105,6 +105,16 @@ class Evidence:
     via: str
     score: float
     source_title: str = ""
+    page_number: int | None = None
+    image_base64: str = field(default="", repr=False, compare=False)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Reader-safe metadata; image bytes remain inside the generation boundary."""
+        return {"citation_id": self.citation_id, "document_id": self.document_id,
+                "version_id": self.version_id, "display_name": self.display_name,
+                "locator": self.locator, "excerpt": self.excerpt, "via": self.via, "score": self.score,
+                **({"source_title": self.source_title} if self.source_title else {}),
+                **({"page_number": self.page_number} if self.page_number is not None else {})}
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,20 +136,7 @@ class QueryResult:
         return {
             "outcome": self.outcome.value,
             "answer": self.answer,
-            "citations": [
-                {
-                    "citation_id": item.citation_id,
-                    "document_id": item.document_id,
-                    "version_id": item.version_id,
-                    "display_name": item.display_name,
-                    "locator": item.locator,
-                    "excerpt": item.excerpt,
-                    "via": item.via,
-                    "score": item.score,
-                    **({"source_title": item.source_title} if item.source_title else {}),
-                }
-                for item in self.citations
-            ],
+            "citations": [item.as_dict() for item in self.citations],
             "request_id": self.request_id,
             "verification": dict(self.verification),
         }

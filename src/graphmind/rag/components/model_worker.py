@@ -8,6 +8,9 @@ from .local_inference import verify_model
 
 
 def run(request: dict) -> dict:
+    if request["operation"] == "render_pdf":
+        from .pdf_pages import render_worker
+        return render_worker(request)
     if request["operation"] == "tree":
         from importlib.metadata import version
         from pageindex.flash import page_index_flash

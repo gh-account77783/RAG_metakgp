@@ -9,6 +9,7 @@ from ...errors import (EngineUnavailableError, GraphMindError, JobLeaseError, Ma
                        ParserLimitError, ProviderResponseError, QueryBudgetError, QueryCancelledError, UnsupportedFileError)
 from ..components.contracts import Evidence, QueryContext
 from ..components.index_contracts import IndexInventory, IndexRecipe, IndexStatus
+from ..components.pdf_pages import source_pages
 
 
 REVISION = "pageindex-flash-pages-v1"
@@ -28,27 +29,7 @@ class TreeNavigation:
              "evidence": "original-pdf-pages-v1", "fanout": 8})
 
     def _pages(self, version):
-        chunks = self.indexes.metadata.all_chunks_for_version(version.version_id)
-        inventory = IndexInventory.from_unit_ids([item.chunk_id for item in chunks])
-        if (inventory.unit_count, inventory.unit_digest) != (version.expected_chunk_count, version.chunk_digest):
-            raise ManifestUnavailableError("PDF source inventory differs")
-        pages = {}
-        for chunk in chunks:
-            match = re.fullmatch(r"page (\d+)(?:, part \d+)?", chunk.locator)
-            if match is None:
-                raise UnsupportedFileError("Tree navigation requires original PDF-page text")
-            page = int(match.group(1))
-            if page not in range(1, self.max_pdf_pages + 1):
-                raise ParserLimitError("PDF page exceeds the configured limit")
-            existing = pages.setdefault(page, {"text": "", "start": chunk.start_offset})
-            offset = chunk.start_offset - existing["start"]
-            if offset > len(existing["text"]):
-                existing["text"] += " " * (offset - len(existing["text"]))
-            overlap = max(0, len(existing["text"]) - offset)
-            existing["text"] += chunk.text[overlap:]
-        return [{"page": number, "unit_id": f"page:{version.version_id}:{number}",
-                 "locator": f"page {number}", "text": record["text"]}
-                for number, record in sorted(pages.items())]
+        return source_pages(self.indexes.metadata, version, max_pages=self.max_pdf_pages)
 
     def _tree(self, raw, pages):
         identifiers, count = set(), 0
@@ -181,7 +162,8 @@ class TreeNavigation:
         if len(selected) > 3 or sum(len(pages[number]["text"]) for number in selected) > self.max_context_chars:
             raise QueryBudgetError("Selected PDF pages exceed the configured evidence budget")
         evidence = [Evidence(pages[number]["unit_id"], document.document_id, version.version_id,
-                            document.display_name, f"page {number}", pages[number]["text"], "tree", 1.0)
+                            document.display_name, f"page {number}", pages[number]["text"], "tree", 1.0,
+                            page_number=number)
                     for number in sorted(selected)]
         self.sources.assert_current((version.version_id,))
         return evidence

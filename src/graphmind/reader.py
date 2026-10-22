@@ -19,16 +19,7 @@ class ReaderService:
 
     @staticmethod
     def _evidence(item: Any) -> dict[str, Any]:
-        return {
-            "citation_id": item.citation_id,
-            "document_id": item.document_id,
-            "version_id": item.version_id,
-            "display_name": item.display_name,
-            "locator": item.locator,
-            "excerpt": item.excerpt,
-            "via": item.via,
-            "score": item.score,
-        }
+        return item.as_dict()
 
     def search_documents(self, query: str, *, limit: int = 8,
                          cancel_event: threading.Event | None = None,
