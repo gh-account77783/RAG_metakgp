@@ -32,8 +32,9 @@ scanner/build metadata remain where their tools discover them.
 | Fixed browser-resource loading | `web/assets.py` |
 
 `rag/tree_navigation/` implements bounded text-bearing PDF navigation through
-the pinned local PageIndex adapter. `rag/multimodal/` remains reserved and
-unavailable. Engines must be explicitly enabled; catalogue membership does not
+the pinned local PageIndex adapter. `rag/multimodal/` contains the local PDF-page
+adapter; its reader catalogue remains disabled pending qualification. Engines
+must be explicitly enabled; catalogue membership does not
 download models or enable a runtime adapter.
 
 ## Dependency direction and compatibility
@@ -46,11 +47,10 @@ identity authority, with the existing least-privilege credential separation.
 
 Root `domain.py`, `embeddings.py`, `retrieval.py` and `storage.py` are thin
 compatibility exports for existing consumers, not second implementations.
-Internal product imports use canonical modules. Types and enum identities,
-serialized results, configuration, index fingerprints, storage schemas and
-existing ranking/budgets remain unchanged. No corpus migration or reindex is
-needed merely because Python modules moved. Accuracy improvements and new
-engine indexing/lifecycle contracts remain separate implementation work.
+Internal product imports use canonical modules. The compatibility exports retain
+the same type and enum identities. No corpus migration or reindex is needed
+merely because Python modules moved. Versioned engine recipes and the additive
+metadata schema changes below have their own explicit lifecycle boundaries.
 
 Reuse the existing provider, source authority, jobs and citation policy rather
 than copying them into each engine. Algorithm-specific parsers and index shapes
@@ -149,18 +149,47 @@ unsupported formats fail clearly. The adapter never falls back to vector search.
 Local Ollama calls and model workers share an installation lock; local requests
 unload Ollama weights after use. Workers cannot open outbound network connections.
 
+## Original PDF-page retrieval
+
+The optional `multimodal` adapter uses a retained, pinned ColQwen2 model through
+Sentence Transformers' multi-vector encoder. Indexing rasterizes original PDF
+pages in a bounded offline PDFium worker and stores page vectors as safetensors
+alongside verified PNGs in the shared private artifact store. It accepts
+text-bearing PDFs, up to 50 pages, including visual-only pages within them.
+There is no OCR or fallback to text/vector retrieval.
+
+A query selects one ready PDF and sends its highest-ranked original page to the
+existing local vision-capable Ollama provider. Image input is restricted to local
+loopback endpoints; hosted providers and the diagnostic extractive provider are
+rejected. Page numbers and source identities appear in citations; image bytes
+remain private and are omitted from JSON results. This bounded adapter does not
+establish factual quality or native release acceptance by itself.
+
+The authenticated reader catalogue reports readiness per document and engine.
+Browser and MCP readers share this catalogue and source checks. Original-file
+downloads and PNG page previews recheck both authorization and the active source
+after reading, before returning bytes. Raw originals are attachments; previews
+render bounded PNGs rather than executing document content.
+
 ## Assets and builds
 
-`assets/web/` is the single editable CSS/JS source, outside `src/`. The pinned
-setuptools build hook copies an explicit allowlist into the built package's
-`graphmind/web/static/`. Those are generated distribution resources, not a
-second checked-in source copy. The source archive includes the hook and original
-assets, so building a wheel from it works too.
+`frontend/` owns the React/TypeScript reader components and common API client.
+Its pinned Vite build generates static CSS/JavaScript in `assets/web/`, alongside
+third-party notices and a source/output hash manifest. See `frontend/README.md`
+for build commands. Node is a build/test prerequisite, not a production server.
+The setuptools build hook verifies that manifest and copies an explicit allowlist
+into `graphmind/web/static/`; it never installs npm packages or runs a frontend
+build. The source archive retains the canonical frontend inputs and generated
+assets so it can build a wheel without npm or package-index access.
 
 Source runs resolve only the explicit checkout asset directory. Installed wheels
 use package resources; they must not fall back to arbitrary working-directory
-files or remote URLs. The current reader has not been migrated to React. Its
-future build can use the same deliberate static-resource boundary.
+files or remote URLs. Asset URLs include a content-derived version to avoid a
+stale reader after an update. The UI shares one API client, engine/document
+selection, answer panel and protected source preview. Cancelling or changing
+selection discards late responses; account loss clears the current answer and
+preview. Only an authentication failure before execution may renew and replay
+a request; provider errors and revocation never trigger a hidden model retry.
 
 `tools/verify_package.py` builds an allowlisted snapshot, checks wheel/sdist
 contents, installs outside the checkout, verifies CLI/resource loading and runs
@@ -174,7 +203,7 @@ in `tests/README.md`. Shared fixtures live in `tests/support/`; test modules do
 not import other test modules for setup. Integration and native service checks
 are explicit, not counted as offline passes or represented by placeholder tests.
 
-This refactor adds no new third-party dependency, model call, architecture
-selection API, authentication server, public ingestion route or data migration.
-Tree/visual implementation, GraphMind factual quality, complete native services
-and final security/licensing/release qualification remain separate gates.
+All engines reuse the existing identity, source, job, provider and reader
+authorities. Ingestion remains host-only. GraphMind factual quality, complete
+native services and final security/licensing/release qualification are separate
+from offline contract tests and individual model probes.

@@ -16,8 +16,8 @@ narrowed from the unqualified >=3.11 claim. This does not claim native OS servic
 support. Offline CI now installs under the snapshot on Ubuntu/Windows and runs
 clean built-wheel verification. Exact commit `587140a` passed both OS jobs and
 secret scan in [CI39461334545](https://github.com/gh-account77783/RAG_metakgp/actions/runs/39461334545).
-This is not native service/reboot or release qualification. Node is a test-only prerequisite for the browser-script fault
-regression, not an application runtime dependency.
+This is not native service/reboot or release qualification. Node is a frontend
+build/test prerequisite, not a production application runtime dependency.
 
 | Purpose | Direct dependency |
 | --- | --- |
@@ -58,12 +58,13 @@ Current native/package receipts must identify the exact bundle and interpreter.
 
 | Package extra | Direct libraries |
 | --- | --- |
-| `tree` | `pageindex==0.4.4` |
+| `tree` | `pageindex==0.4.4`, `Pillow==13.0.0` |
 | `rerank` | `sentence-transformers==6.1.0`, `torch==2.14.1` |
 | `visual` | `sentence-transformers==6.1.0`, `torch==2.14.1`, `torchvision==0.29.1`, `transformers[vision]==5.20.2`, `pypdfium2==5.14.0` |
 
 Installing an extra supplies dependencies; it does not enable or implement a
-reserved engine. The runtime catalogue still exposes only implemented GraphMind.
+reserved engine. The runtime catalogue records GraphMind and bounded PDF tree
+navigation as implemented; visual catalogue qualification remains separate.
 The base install does not require these libraries. Each profile shares the same
 application identity, reader, MCP, source and job boundaries.
 
@@ -166,6 +167,21 @@ release lock. P4 may promote only the model and embedding dependencies actually
 used by the accepted implementation. P5/P6 do the same for browser, account,
 OAuth, and MCP dependencies. The crawler and MetaKGP corpus remain test and
 development assets outside the final user package.
+
+## Static reader and local answer context
+
+The reader build uses React/React DOM 19.3.1, TypeScript 7.0.2 and Vite 8.3.5
+with Node 24.22.1. `frontend/package-lock.json` retains exact public npm artifact
+integrities. `assets/web/THIRD_PARTY_NOTICES.txt` contains the retained software
+notices; its presence is not a blanket software/model/data rights clearance.
+Production serves the generated files from Python and does not require Node.
+
+Local Ollama requests explicitly allocate `answer_local_context_tokens`
+(default 16384, supported range 1024–32768), in addition to the character and
+output budgets. The provider identity records that allocation. This avoids
+depending on the runtime's hardware-dependent default; increased context uses
+more memory and still needs qualification on the target host. Hosted requests
+leave context allocation to their provider.
 
 ## Maintenance rule
 
