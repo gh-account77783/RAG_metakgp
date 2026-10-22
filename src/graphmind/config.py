@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 import tomllib
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlparse
@@ -248,70 +248,8 @@ class Settings:
             candidate = cwd / ".env"
             selected_dotenv = candidate if candidate.is_file() else None
 
-        values: dict[str, object] = {
-            "data_dir": cwd / ".graphmind-data",
-            "allowed_import_roots": (cwd,),
-            "collection_id": "default",
-            "collection_name": "graphmind_chunks",
-            "max_file_bytes": 25 * 1024 * 1024,
-            "chunk_size": 1200,
-            "chunk_overlap": 120,
-            "embedding_provider": "hash",
-            "embedding_model": "bge-m3",
-            "embedding_model_id": "BAAI/bge-m3",
-            "embedding_revision": "auto",
-            "embedding_precision": "auto",
-            "embedding_base_url": "http://127.0.0.1:11434",
-            "embedding_api_key": "",
-            "embedding_dimension": 384,
-            "embedding_timeout_seconds": 60,
-            "embedding_batch_size": 16,
-            "job_lease_seconds": 60,
-            "max_queued_jobs": 100,
-            "max_extracted_chars": 10_000_000,
-            "max_archive_entries": 2048,
-            "max_archive_uncompressed_bytes": 100 * 1024 * 1024,
-            "max_pdf_pages": 1000,
-            "parser_timeout_seconds": 30,
-            "csv_delimiter": "auto",
-            "neo4j_uri": "bolt://localhost:7687",
-            "neo4j_username": "neo4j",
-            "neo4j_password": "",
-            "neo4j_database": "neo4j",
-            "ollama_base_url": "https://ollama.com",
-            "ollama_api_key": "",
-            "answer_model": "gemma4:31b",
-            "answer_provider": "ollama",
-            "answer_mode": "hosted",
-            "answer_timeout_seconds": 60,
-            "answer_max_retries": 2,
-            "answer_max_context_chars": 24_000,
-            "answer_max_output_tokens": 512,
-            "retrieval_seed_limit": 4,
-            "retrieval_graph_limit": 8,
-            "retrieval_graph_scope": "chunk",
-            "retrieval_max_evidence": 12,
-            "retrieval_min_vector_score": 0.02,
-            "max_question_chars": 2000,
-            "max_concurrent_queries": 4,
-            "max_queued_queries": 8,
-            "query_queue_timeout_seconds": 1.0,
-            "public_base_url": "http://127.0.0.1:8000",
-            "identity_issuer_url": "http://127.0.0.1:8080/realms/graphmind",
-            "identity_browser_client_id": "graphmind-web",
-            "identity_browser_client_secret": "",
-            "identity_resource_client_id": "graphmind-resource",
-            "identity_resource_client_secret": "",
-            "identity_admin_client_id": "graphmind-admin",
-            "identity_admin_client_secret": "",
-            "identity_required_scope": "graphmind:read",
-            "identity_mcp_audience": "http://127.0.0.1:8000/mcp",
-            "identity_flow_signing_key": "",
-            "identity_http_timeout_seconds": 10,
-            "browser_cookie_secure": True,
-            "browser_max_request_bytes": 16_384,
-            "browser_max_fetch_chars": 24_000,
-        }
+        defaults = cls(data_dir=cwd / ".graphmind-data", allowed_import_roots=(cwd,))
+        values: dict[str, object] = {item.name: getattr(defaults, item.name) for item in fields(cls)}
         if selected_config is not None:
             path = selected_config.expanduser().resolve()
             values.update(_parse_toml(path))
