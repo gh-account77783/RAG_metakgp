@@ -38,7 +38,7 @@ class TransportTLSTests(unittest.TestCase):
             cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
             config=root/'identity.toml';config.write_text('[graphmind]\nidentity_ca_file = "certificate.pem"\n')
             settings=Settings.load(config_path=config,dotenv_path=root/'absent.env',environ={})
-            self.assertEqual(settings.identity_ca_file,str(cert_path))
+            self.assertEqual(settings.identity_ca_file,str(cert_path.resolve()))
             key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,
                 serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
             class Handler(BaseHTTPRequestHandler):

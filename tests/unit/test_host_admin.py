@@ -23,7 +23,7 @@ class HostAdministrationTests(unittest.TestCase):
             (root / 'ignored.bin').write_bytes(b'owned')
             with make_app(root) as app:
                 (app.settings.data_dir / 'not-an-input.txt').write_text('Runtime data.')
-                self.assertEqual(folder_sources(app, root), [root / 'one.txt'])
+                self.assertEqual(folder_sources(app, root), [(root / 'one.txt').resolve()])
                 with self.assertRaises(PathValidationError):
                     folder_sources(app, root, recursive=True, max_files=1)
                 self.assertEqual(app.metadata.list_jobs(), [])
