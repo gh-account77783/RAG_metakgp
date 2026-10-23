@@ -306,6 +306,7 @@ def create_product_server(
         if not offload_slots.acquire(blocking=False):
             raise QueryCapacityError("Reader capacity is full")
         cancelled = threading.Event()
+        watcher_finished = asyncio.Event()
         supports_cancellation = function in (reader.ask, reader.search_documents)
         if supports_cancellation:
             kwargs["cancel_event"] = cancelled
@@ -317,7 +318,7 @@ def create_product_server(
                 offload_slots.release()  # Keep capacity until the actual worker exits.
 
         async def watch_disconnect():
-            while True:
+            while not watcher_finished.is_set():
                 if await request.is_disconnected():
                     cancelled.set()
                     return
@@ -335,6 +336,7 @@ def create_product_server(
             raise
         finally:
             if watcher is not None:
+                watcher_finished.set()
                 watcher.cancel()
                 with suppress(asyncio.CancelledError):
                     await watcher

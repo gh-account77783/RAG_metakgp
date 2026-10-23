@@ -85,6 +85,45 @@ class HardeningConfigurationTests(unittest.TestCase):
 
 
 class IdentityHardeningTests(unittest.IsolatedAsyncioTestCase):
+    async def test_completed_read_stops_probe_that_consumes_task_cancellation(self):
+        import threading
+        import httpx2
+        from starlette.requests import Request
+
+        started = threading.Event()
+        calls = 0
+
+        async def disconnect_probe(request):
+            nonlocal calls
+            calls += 1
+            if calls > 1:
+                raise AssertionError('Disconnect probe continued after the read completed')
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                # A receive cancellation scope can consume task cancellation.
+                return False
+
+        original_fetch = ReaderService.fetch_document
+
+        def fetch(reader, *args, **kwargs):
+            if not started.wait(2):
+                raise AssertionError('Disconnect probe did not start')
+            return original_fetch(reader, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            settings = identity_settings(Path(temporary))
+            _, app = create_product_server(settings, FakeApplication(), authority=FakeAuthority())
+            with patch.object(Request, 'is_disconnected', disconnect_probe), \
+                    patch.object(ReaderService, 'fetch_document', fetch):
+                async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),
+                        base_url=settings.public_base_url) as client:
+                    response = await asyncio.wait_for(client.get('/documents/doc-opaque',
+                        headers={'Cookie': 'graphmind_access=access'}), timeout=3)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(calls, 1)
+
     async def test_independent_sdk_client_exercises_acceptance_tools_over_asgi(self):
         # Execute the shipped client against the actual SDK wire protocol, but
         # synthetic identity/storage and in-process ASGI: not real OAuth/network acceptance.
