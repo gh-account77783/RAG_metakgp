@@ -49,9 +49,10 @@ full native services/release qualification remain separate. Apply
 both constraints files. Inventory tests follow extras/markers to require exact
 pins across the Windows and Linux dependency closures.
 
-The optional engine profile requires `PyJWT==2.15.1` and `websockets==16.0`.
-These replace the earlier 2.14.0/17.1 core pins: PageIndex's pinned Agents SDK
-requires PyJWT >=2.15 and websockets <17 ([published metadata](https://pypi.org/pypi/openai-agents/0.24.0/json)). The original September environment/CI
+The optional engine profile retains `PyJWT==2.15.1` and `websockets==16.0`.
+These replaced the earlier 2.14.0/17.1 core pins for the former Agents 0.24
+profile. The current Agents 0.20 rollback also requires websockets <17
+([published metadata](https://pypi.org/pypi/openai-agents/0.20.0/json)). The original September environment/CI
 receipts qualify their original pins; they are not evidence for this adjustment.
 Current native/package receipts must identify the exact bundle and interpreter.
 
@@ -82,8 +83,11 @@ application identity, reader, MCP, source and job boundaries.
 
 Apply `config/constraints/engines-py313.txt` with the core and Linux constraints
 when resolving any inference extra. Its 39 additional exact pins come from the
-combined native resolver closure, including `openai-agents==0.24.0` and
-`litellm==1.106.2`. This is a resolver input, not a complete hash lock. Use
+combined resolver closure, now including `openai-agents==0.20.0`,
+`openai==2.54.0` and `litellm==1.106.2`. LiteLLM's published metadata requires
+OpenAI >=2.20,<3; Agents 0.20 accepts OpenAI >=2.45,<3 and MCP <3. The former
+Agents 0.24/OpenAI 3 pins cannot resolve with that LiteLLM release. This is a
+resolver input, not a complete hash lock. Use
 [retained native bundles](RELEASE_BUNDLES.md) for repeatable offline installation.
 
 LiteLLM 1.107.0 was [compromised and withdrawn upstream](https://docs.litellm.ai/blog/security-incident-oct-21-2026).
