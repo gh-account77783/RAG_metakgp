@@ -38,6 +38,12 @@ Keep the approved runtime and bundle for recovery. Older schema1 bundles without
 a bundled installer remain verifiable through the build tool or a separately
 trusted bootstrap; do not rewrite their approved manifest in place.
 
+On native Unix, the environment links its interpreter to the retained qualified
+Python runtime, avoiding redundant standalone-binary copies. Keep that immutable
+runtime at its recorded path for the lifetime of each environment. Windows uses
+ordinary interpreter copies; neither mode makes the standard library independent
+of its base runtime.
+
 Native databases, identity configuration, model artifacts and protected state
 remain separate installation inputs. Follow `deploy/native/README.md` for the
 reviewed service layouts/update procedure. Retained notices and passing hash

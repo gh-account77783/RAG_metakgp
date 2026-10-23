@@ -48,8 +48,9 @@ class BundleInstallerTests(unittest.TestCase):
         self.assertTrue(receipt['offline_install'] and receipt['pip_check'])
         self.assertEqual(json.loads((environment/'bundle-install.json').read_text()),receipt)
         python=environment/('Scripts/python.exe' if sys.platform=='win32' else 'bin/python')
+        if sys.platform!='win32':self.assertTrue(python.is_symlink())
         actual=subprocess.run([str(python),'-I','-B','-c',
-            "import importlib.metadata;print(importlib.metadata.version('graphmind-rag-mcp'))"],
+            f"import sys,importlib.metadata;assert sys.prefix=={str(environment)!r};print(importlib.metadata.version('graphmind-rag-mcp'))"],
             capture_output=True,text=True,check=True)
         self.assertEqual(actual.stdout.strip(),'1.0')
         self.assertNotEqual(subprocess.run(command,capture_output=True).returncode,0)

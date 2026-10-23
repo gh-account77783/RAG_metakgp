@@ -129,7 +129,9 @@ def install_verified(bundle: Path, environment: Path, manifest: dict) -> dict:
         raise ValueError('Installation requires a new environment outside the bundle')
     environment.parent.mkdir(parents=True,exist_ok=True)
     environment.mkdir()
-    venv.EnvBuilder(with_pip=True).create(environment)
+    # Native Unix environments retain the qualified base runtime; avoid three
+    # redundant standalone-interpreter copies. Windows keeps ordinary copies.
+    venv.EnvBuilder(with_pip=True,symlinks=sys.platform!='win32').create(environment)
     executable=environment/('Scripts/python.exe' if sys.platform=='win32' else 'bin/python')
     with (environment/'bundle-install.log').open('wb') as log:
         subprocess.run([str(executable),'-m','pip','--isolated','--disable-pip-version-check',
