@@ -75,6 +75,7 @@ _ENV_KEYS = {
     "GRAPHMIND_QUERY_QUEUE_TIMEOUT_SECONDS": "query_queue_timeout_seconds",
     "GRAPHMIND_PUBLIC_BASE_URL": "public_base_url",
     "GRAPHMIND_IDENTITY_ISSUER_URL": "identity_issuer_url",
+    "GRAPHMIND_IDENTITY_CA_FILE": "identity_ca_file",
     "GRAPHMIND_IDENTITY_BROWSER_CLIENT_ID": "identity_browser_client_id",
     "GRAPHMIND_IDENTITY_BROWSER_CLIENT_SECRET": "identity_browser_client_secret",
     "GRAPHMIND_IDENTITY_RESOURCE_CLIENT_ID": "identity_resource_client_id",
@@ -204,6 +205,7 @@ class Settings:
     query_queue_timeout_seconds: float = 1.0
     public_base_url: str = "http://127.0.0.1:8000"
     identity_issuer_url: str = "http://127.0.0.1:8080/realms/graphmind"
+    identity_ca_file: str = ""
     identity_browser_client_id: str = "graphmind-web"
     identity_browser_client_secret: str = field(default="", repr=False)
     identity_resource_client_id: str = "graphmind-resource"
@@ -286,6 +288,8 @@ class Settings:
             values["reranker_dir"] = str(_coerce_path(values["reranker_dir"], base))
         if values.get("visual_model_dir"):
             values["visual_model_dir"] = str(_coerce_path(values["visual_model_dir"], base))
+        if values.get('identity_ca_file'):
+            values['identity_ca_file']=str(_coerce_path(values['identity_ca_file'],base))
         engines = values.get("enabled_engines", ("graphmind",))
         if isinstance(engines, str):
             engines = [value.strip() for value in engines.split(",") if value.strip()]
@@ -508,6 +512,8 @@ class Settings:
                 raise ConfigurationError(f"{label} must be a non-empty token")
         if self.identity_http_timeout_seconds < 1:
             raise ConfigurationError("identity_http_timeout_seconds must be positive")
+        if self.identity_ca_file and not Path(self.identity_ca_file).is_file():
+            raise ConfigurationError('The configured identity CA file is unavailable')
         if self.browser_max_request_bytes < 1024 or self.browser_max_fetch_chars < 1000:
             raise ConfigurationError("Browser request and fetch budgets are too small")
         if require_identity_secrets:
@@ -620,6 +626,7 @@ class Settings:
             "ollama_api_key": "<configured>" if self.ollama_api_key else "<missing>",
             "public_base_url": self.public_base_url,
             "identity_issuer_url": self.identity_issuer_url,
+            "identity_ca_file": self.identity_ca_file or '<public roots only>',
             "identity_browser_client_id": self.identity_browser_client_id,
             "identity_browser_client_secret": (
                 "<configured>" if self.identity_browser_client_secret else "<missing>"

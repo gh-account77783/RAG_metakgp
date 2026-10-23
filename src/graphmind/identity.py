@@ -97,6 +97,9 @@ class IdentityHttpTransport(Protocol):
 class UrllibIdentityTransport:
     """Small transport which never includes credentials or response bodies in errors."""
 
+    def __init__(self, ca_file: str | None = None):
+        self.ca_file=ca_file or None
+
     def request_json(
         self,
         method: str,
@@ -120,7 +123,7 @@ class UrllibIdentityTransport:
             request_headers.setdefault("Content-Type", "application/json")
         request = urllib.request.Request(url, data=body, method=method, headers=request_headers)
         try:
-            with urllib.request.urlopen(request, timeout=timeout, context=verified_context()) as response:
+            with urllib.request.urlopen(request, timeout=timeout, context=verified_context(self.ca_file)) as response:
                 raw = response.read(2 * 1024 * 1024 + 1)
                 if len(raw) > 2 * 1024 * 1024:
                     raise IdentityResponseError("Identity response exceeds the allowed size")
@@ -160,11 +163,13 @@ class KeycloakIdTokenValidator:
         client_id: str,
         metadata_loader,
         timeout: float = 5.0,
+        ca_file: str | None = None,
     ) -> None:
         self.issuer_url = issuer_url.rstrip("/")
         self.client_id = client_id
         self._metadata_loader = metadata_loader
         self.timeout = timeout
+        self.ca_file=ca_file or None
 
     async def validate(self, token: str, *, nonce: str) -> Mapping[str, Any]:
         metadata = await self._metadata_loader()
@@ -175,7 +180,8 @@ class KeycloakIdTokenValidator:
         def decode() -> Mapping[str, Any]:
             import jwt
             try:
-                key = jwt.PyJWKClient(jwks_uri, timeout=self.timeout).get_signing_key_from_jwt(token)
+                key = jwt.PyJWKClient(jwks_uri, timeout=self.timeout,
+                    ssl_context=verified_context(self.ca_file)).get_signing_key_from_jwt(token)
                 claims = jwt.decode(
                     token,
                     key.key,
@@ -210,7 +216,7 @@ class KeycloakAuthority:
         settings.validate(require_identity_secrets=True)
         self.settings = settings
         self.issuer_url = settings.identity_issuer_url.rstrip("/")
-        self.transport = transport or UrllibIdentityTransport()
+        self.transport = transport or UrllibIdentityTransport(settings.identity_ca_file)
         self.timeout = float(settings.identity_http_timeout_seconds)
         self._metadata_cache: dict[str, Any] | None = None
         self._metadata_lock = asyncio.Lock()
@@ -219,6 +225,7 @@ class KeycloakAuthority:
             settings.identity_browser_client_id,
             self.metadata,
             timeout=self.timeout,
+            ca_file=settings.identity_ca_file,
         )
 
     @staticmethod
@@ -495,7 +502,7 @@ class KeycloakAdminClient:
     ) -> None:
         settings.validate(require_identity_admin_secret=True)
         self.settings = settings
-        self.transport = transport or UrllibIdentityTransport()
+        self.transport = transport or UrllibIdentityTransport(settings.identity_ca_file)
         self.timeout = float(settings.identity_http_timeout_seconds)
         self.issuer = settings.identity_issuer_url.rstrip("/")
         marker = "/realms/"

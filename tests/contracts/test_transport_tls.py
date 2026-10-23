@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from graphmind.errors import IdentityUnavailableError
+from graphmind.config import Settings
 from graphmind.http_client import HttpUnavailableError, UrllibJsonTransport
 from graphmind.identity import UrllibIdentityTransport
 from graphmind.tls import verified_context
@@ -35,6 +36,9 @@ class TransportTLSTests(unittest.TestCase):
                 .sign(key, hashes.SHA256()))
             cert_path, key_path = root/'certificate.pem', root/'owned-key.pem'
             cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+            config=root/'identity.toml';config.write_text('[graphmind]\nidentity_ca_file = "certificate.pem"\n')
+            settings=Settings.load(config_path=config,dotenv_path=root/'absent.env',environ={})
+            self.assertEqual(settings.identity_ca_file,str(cert_path))
             key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,
                 serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
             class Handler(BaseHTTPRequestHandler):
@@ -63,6 +67,15 @@ class TransportTLSTests(unittest.TestCase):
                     with self.assertRaises(error):
                         transport.request_json('GET', f'https://127.0.0.1:{port}/',
                             headers={}, payload=None, timeout=3)
+                private=UrllibIdentityTransport(ca_file=str(cert_path))
+                self.assertEqual(private.request_json('GET',f'https://127.0.0.1:{port}/',
+                    headers={},payload=None,timeout=3),{'owned':True})
+                with self.assertRaises(IdentityUnavailableError):
+                    private.request_json('GET',f'https://localhost:{port}/',headers={},payload=None,timeout=3)
+                # The explicit identity CA does not change model/public transport trust.
+                with self.assertRaises(HttpUnavailableError):
+                    UrllibJsonTransport().request_json('GET',f'https://127.0.0.1:{port}/',
+                        headers={},payload=None,timeout=3)
             finally:
                 verified_context.cache_clear()
                 server.shutdown(); server.server_close(); thread.join(3)
