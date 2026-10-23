@@ -46,6 +46,7 @@ jobs:
           --max-archive-depth 1 --exit-code 1
 
   offline:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
