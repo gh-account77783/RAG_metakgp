@@ -42,3 +42,21 @@ Native databases, identity configuration, model artifacts and protected state
 remain separate installation inputs. Follow `deploy/native/README.md` for the
 reviewed service layouts/update procedure. Retained notices and passing hash
 checks are evidence for review, not software/model/data rights approval.
+
+When a chosen wheel omits an upstream notice, retain the reviewed original text
+as a supplemental file in a **new** bundle. Supply `--supplemental-notices
+/private/reviewed/notices.json` to `release_bundle.py collect` or `freeze`.
+The JSON inventory has `schema_version: 1` and a `notices` list. Each entry needs
+`distribution` (canonical package name), exact `version`, `wheel_sha256`, `file`
+(relative to the inventory), `sha256` of that file, public HTTPS `source_url` and
+pinned `revision`. For example:
+
+```json
+{"schema_version":1,"notices":[{"distribution":"example","version":"1.0","wheel_sha256":"APPROVED_WHEEL_SHA256","file":"LICENSE","sha256":"APPROVED_LICENSE_SHA256","source_url":"https://publisher.example/commit/LICENSE","revision":"PINNED_COMMIT"}]}
+```
+
+The builder checks the selected wheel identity and notice bytes, retains the
+text under `notices/PACKAGE/supplemental/`, and records its provenance in the
+approved manifest. Both build-time and standalone verification enforce the same
+binding. Upstream wheel bytes and older bundles remain unchanged. This records
+review inputs; it does not infer missing terms or approve redistribution.

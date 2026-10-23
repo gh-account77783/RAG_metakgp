@@ -17,9 +17,9 @@ from packaging.tags import sys_tags
 from packaging.utils import canonicalize_name, parse_wheel_filename
 
 try:
-    from tools.bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer
+    from tools.bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer, verify_notices, bundle_file
 except ModuleNotFoundError:
-    from bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer
+    from bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer, verify_notices, bundle_file
 
 
 PROJECT = "graphmind-rag-mcp"
@@ -119,14 +119,53 @@ def _notice_files(bundle: Path, records: list[dict]) -> dict[str, str]:
     return notices
 
 
-def freeze(bundle: Path, *, extras: list[str] | None = None, provenance: dict | None = None) -> dict:
+def supplemental_files(source: Path | None, records: list[dict]) -> list[tuple[dict, bytes]]:
+    """Retain reviewed public notices separately, without modifying upstream wheels."""
+    if source is None:
+        return []
+    source=source.resolve()
+    document=json.loads(source.read_text(encoding='utf-8'))
+    if set(document)!={'schema_version','notices'} or document['schema_version']!=1:
+        raise ValueError('Expected schema_version 1 supplemental notices')
+    wheels={item['name']:item for item in records}
+    result=[];seen=set()
+    fields={'distribution','version','wheel_sha256','file','sha256','source_url','revision'}
+    for item in document['notices']:
+        if set(item)!=fields:
+            raise ValueError('Expected complete supplemental notice provenance')
+        wheel=wheels.get(item['distribution'])
+        if not wheel or item['version']!=wheel['version'] or item['wheel_sha256']!=wheel['sha256']:
+            raise ValueError('Supplemental notice must identify the exact selected wheel')
+        path=bundle_file(source.parent,item['file'])
+        if digest(path)!=item['sha256']:
+            raise ValueError('Supplemental notice bytes differ from the reviewed hash')
+        relative='notices/'+item['distribution']+'/supplemental/'+path.name
+        if relative in seen:
+            raise ValueError('Duplicate supplemental notice destination')
+        seen.add(relative)
+        record={key:value for key,value in item.items() if key!='file'}
+        record['path']=relative
+        # Use the same validation as the standalone installer, before writing files.
+        if (not isinstance(item['source_url'],str) or not item['source_url'].startswith('https://')
+                or not isinstance(item['revision'],str) or not item['revision'].strip()):
+            raise ValueError('Supplemental notice needs a public HTTPS source and pinned revision')
+        result.append((record,path.read_bytes()))
+    return result
+
+
+def freeze(bundle: Path, *, extras: list[str] | None = None, provenance: dict | None = None,
+           supplemental_notices: Path | None = None) -> dict:
     bundle = bundle.resolve()
     if any((bundle/name).exists() for name in ('manifest.json','requirements.lock','install_bundle.py')):
         raise ValueError("Preserve the existing bundle; use a fresh directory")
     selected = sorted({canonicalize_name(value) for value in extras or []})
     records = records_for(bundle)
     validate_closure(records, selected)
+    supplements=supplemental_files(supplemental_notices,records)
     notices = _notice_files(bundle, records)
+    for item,raw in supplements:
+        target=bundle/item['path'];target.parent.mkdir(parents=True,exist_ok=True)
+        target.write_bytes(raw);notices[item['path']]=digest(target)
     lock = bundle / "requirements.lock"
     lock.write_bytes(lock_text(records).encode("utf-8"))
     installer=bundle/'install_bundle.py'
@@ -135,6 +174,9 @@ def freeze(bundle: Path, *, extras: list[str] | None = None, provenance: dict | 
                 "wheels": records, "lock_sha256": digest(lock), "notices": notices,
                 "provenance": provenance or {}, "rights_disposition": "requires review",
                 "installer": {"filename":installer.name,"sha256":digest(installer)}}
+    if supplements:
+        manifest['supplemental_notices']=[item for item,_ in supplements]
+    verify_notices(bundle,manifest)
     # The manifest is the final completion record; partial downloads are never a bundle.
     (bundle / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
@@ -154,17 +196,12 @@ def verify(bundle: Path) -> dict:
     validate_closure(records, manifest["extras"])
     if digest(lock) != manifest["lock_sha256"] or lock.read_bytes() != lock_text(records).encode("utf-8"):
         raise ValueError("Dependency lock differs from the wheel inventory")
-    for relative, expected in manifest["notices"].items():
-        target = bundle / relative
-        if not relative.startswith("notices/") or not target.resolve().is_relative_to(bundle) or target.is_symlink():
-            raise ValueError("Unsafe notice path")
-        if digest(target) != expected:
-            raise ValueError("Upstream notice bytes changed")
+    verify_notices(bundle,manifest)
     verify_installer(bundle,manifest)
     return manifest
 
 
-def collect(bundle: Path, project_wheel: Path, *, constraints=(), extras=(), artifacts=()) -> dict:
+def collect(bundle: Path, project_wheel: Path, *, constraints=(), extras=(), artifacts=(), supplemental_notices=None) -> dict:
     """Resolve from package metadata on this host, then freeze the complete closure.
 
     Artifacts are reviewed local wheels, e.g. publisher-hashed CPU PyTorch wheels.
@@ -198,7 +235,7 @@ def collect(bundle: Path, project_wheel: Path, *, constraints=(), extras=(), art
     command += [requirement, *map(str, artifacts)]
     with (bundle / "collection.log").open("wb") as log:
         subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, env=pip_environment())
-    return freeze(bundle, extras=selected, provenance=provenance)
+    return freeze(bundle, extras=selected, provenance=provenance, supplemental_notices=supplemental_notices)
 
 
 def install(bundle: Path, environment: Path) -> dict:
@@ -215,6 +252,7 @@ def main(argv=None) -> None:
     parser.add_argument("--constraint", type=Path, action="append", default=[])
     parser.add_argument("--artifact", type=Path, action="append", default=[])
     parser.add_argument("--environment", type=Path)
+    parser.add_argument('--supplemental-notices',type=Path,help='Reviewed public notice inventory for collect/freeze')
     args = parser.parse_args(argv)
     if args.command in {"verify", "install"} and args.extra:
         parser.error("verify/install use the extras recorded in the bundle")
@@ -226,12 +264,14 @@ def main(argv=None) -> None:
         parser.error("project-wheel/constraint/artifact apply only to collect")
     if args.command != "install" and args.environment:
         parser.error("environment applies only to install")
+    if args.supplemental_notices and args.command not in {'collect','freeze'}:
+        parser.error('supplemental-notices applies only to collect/freeze')
     try:
         if args.command == "collect":
             manifest = collect(args.bundle, args.project_wheel, constraints=args.constraint,
-                               extras=args.extra, artifacts=args.artifact)
+                               extras=args.extra, artifacts=args.artifact, supplemental_notices=args.supplemental_notices)
         elif args.command == "freeze":
-            manifest = freeze(args.bundle, extras=args.extra)
+            manifest = freeze(args.bundle, extras=args.extra, supplemental_notices=args.supplemental_notices)
         elif args.command == "install":
             print(json.dumps(install(args.bundle, args.environment), indent=2))
             return

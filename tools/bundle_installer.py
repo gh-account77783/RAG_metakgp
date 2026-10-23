@@ -59,6 +59,28 @@ def verify_installer(bundle: Path, manifest: dict) -> None:
         raise ValueError('Bundle installer bytes changed')
 
 
+def verify_notices(bundle: Path, manifest: dict) -> None:
+    for relative,expected in manifest['notices'].items():
+        if not relative.startswith('notices/') or digest(bundle_file(bundle,relative))!=expected:
+            raise ValueError('Upstream notice bytes changed')
+    actual={p.relative_to(bundle).as_posix() for p in (bundle/'notices').rglob('*')
+            if p.is_file() or p.is_symlink()}
+    if actual!=set(manifest['notices']):
+        raise ValueError('Notice inventory changed')
+    wheels={item['name']:item for item in manifest['wheels']}
+    paths=set()
+    for item in manifest.get('supplemental_notices',[]):
+        wheel=wheels.get(item['distribution'])
+        if (not wheel or item['version']!=wheel['version'] or item['wheel_sha256']!=wheel['sha256']
+                or item['path'] in paths or item['path'] not in manifest['notices']
+                or not item['path'].startswith('notices/'+item['distribution']+'/supplemental/')
+                or item['sha256']!=manifest['notices'][item['path']]
+                or not isinstance(item['source_url'],str) or not item['source_url'].startswith('https://')
+                or not isinstance(item['revision'],str) or not item['revision'].strip()):
+            raise ValueError('Supplemental notice provenance differs from the pinned wheel')
+        paths.add(item['path'])
+
+
 def verify_approved(bundle: Path, manifest_sha256: str) -> dict:
     """Check an externally approved manifest without importing packaging or resolving code."""
     if not isinstance(manifest_sha256,str) or not re.fullmatch(r'[0-9a-fA-F]{64}',manifest_sha256):
@@ -95,13 +117,7 @@ def verify_approved(bundle: Path, manifest_sha256: str) -> dict:
     lock=bundle_file(bundle,'requirements.lock')
     if digest(lock)!=manifest['lock_sha256'] or lock.read_bytes()!=lock_text(records).encode('utf-8'):
         raise ValueError('Dependency lock differs from the wheel inventory')
-    for relative,expected in manifest['notices'].items():
-        if not relative.startswith('notices/') or digest(bundle_file(bundle,relative))!=expected:
-            raise ValueError('Upstream notice bytes changed')
-    notice_root=bundle/'notices'
-    actual={p.relative_to(bundle).as_posix() for p in notice_root.rglob('*') if p.is_file() or p.is_symlink()}
-    if actual!=set(manifest['notices']):
-        raise ValueError('Notice inventory changed')
+    verify_notices(bundle,manifest)
     verify_installer(bundle,manifest)
     return manifest
 
