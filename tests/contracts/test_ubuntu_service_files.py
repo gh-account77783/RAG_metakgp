@@ -16,6 +16,17 @@ class UbuntuServiceFilesTests(unittest.TestCase):
     def layout(self):
         return json.loads((REPOSITORY/'deploy/native/ubuntu.example.json').read_text())
 
+    def test_optional_tls_pair_is_only_passed_to_reader_and_survives_release_update(self):
+        layout={**self.layout(),'ssl_certfile':'/etc/graphmind/tls/chain.pem','ssl_keyfile':'/etc/graphmind/tls/key.pem'}
+        units=render(layout)
+        for name,body in units.items():
+            self.assertEqual('--ssl-keyfile' in body,name.endswith('-reader.service'))
+        from tools.ubuntu_release_files import release_overrides
+        changes,_=release_overrides(layout,'/opt/graphmind/releases/new')
+        self.assertIn('--ssl-keyfile',changes[layout['name']+'-reader.service.d/50-graphmind-release.conf'])
+        for field in ('ssl_certfile','ssl_keyfile'):
+            with self.assertRaises(ValueError):render({**self.layout(),field:layout[field]})
+
     def test_unsafe_layouts_fail_before_generating_units(self):
         for overrides in ({'user': 'root'}, {'name': 'graphmind-test\nUser=root'},
                           {'reader_port': 443}, {'reader_port': 19801},

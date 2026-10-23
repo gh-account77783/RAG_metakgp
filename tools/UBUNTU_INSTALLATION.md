@@ -1,5 +1,9 @@
 # Preparing a complete native Ubuntu installation
 
+Run these module commands from the checkout root, or from the installed
+`share/graphmind` operator directory under the qualified Python environment.
+The packaged `tools` directory supplies the same renderer and installer modules.
+
 Use a qualified Python bundle/runtime and separately retained PostgreSQL,
 Keycloak, Neo4j, JDK, Ollama and model artifacts. The installer does not download
 artifacts, initialize databases, create accounts, change networking or configure
@@ -56,3 +60,22 @@ Configure validating HTTPS and exact OAuth callbacks before granting network
 access. Enable/reboot only within the approved acceptance scope and verify actual
 autostart, update/rollback and protected backup/restore. This tooling is an operator
 installation step, not a claim of clean-host or production acceptance.
+
+For a direct native HTTPS reader, add `ssl_certfile` and `ssl_keyfile` together
+to the application layout. Use an unencrypted PEM key protected for the service
+account and a certificate chain valid for the configured hostname. The existing
+`serve` command passes these to Uvicorn; it validates the chain/key before opening
+application state and requires an HTTPS `public_base_url`. Set the matching MCP
+audience and OAuth callbacks in the existing identity configuration, keep secure
+cookies enabled, and verify clients with the intended trust chain. Do not install
+a test CA globally or disable client certificate verification. Keycloak's own
+HTTPS/proxy configuration remains a separate vendor input. Certificate renewal
+and restart acceptance remain operational checks.
+
+For an explicitly trusted private identity CA, set `identity_ca_file` or
+`GRAPHMIND_IDENTITY_CA_FILE` to its PEM certificate bundle in the protected
+installation configuration. Identity discovery/token/introspection/admin requests
+and ID-token JWKS loading use that same trust input. It adds the selected CA to
+the pinned public roots without changing certifi or the host trust store; hostname
+and certificate validation remain enabled. Model-provider trust remains unchanged.
+Restart affected services when replacing a retained CA file.

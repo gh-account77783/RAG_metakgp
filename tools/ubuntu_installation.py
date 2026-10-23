@@ -46,6 +46,8 @@ def requirements(app, backend):
     user=app['user'];data=PurePosixPath(app['data_dir'])
     for key in ('python','chroma','ollama'):add(user,app[key],'x')
     for key in ('config','dotenv','model_dir'):add(user,app[key],'r')
+    for key in application.TLS_FIELDS:
+        if key in app:add(user,app[key],'r')
     for path in (data,data/'chroma',data/'home',data/'cache',PurePosixPath(app['ollama_home'])):
         add(user,path,'w',True)
     for role in backends.ROLES:
@@ -66,7 +68,8 @@ def prepare(app, backend, output):
     manifest={'schema_version':1,'name':app['name'],'unit_sha256':{
         name:hashlib.sha256((output/name).read_bytes()).hexdigest() for name in units},
         'requirements':requirements(app,backend),
-        'protected_files':[app['config'],app['dotenv'],backend['keycloak']['environment_file']],
+        'protected_files':[app['config'],app['dotenv'],backend['keycloak']['environment_file'],
+                           *([app['ssl_keyfile']] if 'ssl_keyfile' in app else [])],
         'data_dir':app['data_dir'],'accounts':[app['user'],*[backend[r]['user'] for r in backends.ROLES]],
         'layout_sha256':hashlib.sha256(json.dumps([app,backend],sort_keys=True).encode()).hexdigest()}
     (output/'installation.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')

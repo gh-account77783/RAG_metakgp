@@ -7,10 +7,12 @@ import asyncio
 import json
 import math
 import signal
+import ssl
 import sys
 import threading
 from dataclasses import asdict, replace
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .config import Settings
 from .rag.components.contracts import Job, Outcome, QueryContext
@@ -108,6 +110,8 @@ def _parser() -> argparse.ArgumentParser:
     )
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8000)
+    serve_parser.add_argument('--ssl-certfile',type=Path,help='PEM certificate chain for a direct HTTPS listener')
+    serve_parser.add_argument('--ssl-keyfile',type=Path,help='Protected PEM private key; requires --ssl-certfile')
 
     accounts_parser = subcommands.add_parser(
         "accounts", help="Host-only Keycloak account administration"
@@ -259,6 +263,19 @@ def main(argv: list[str] | None = None) -> None:
         if args.command == "serve":
             if args.port not in range(1, 65_536):
                 parser.error("--port must be between 1 and 65535")
+            if bool(args.ssl_certfile)!=bool(args.ssl_keyfile):
+                parser.error('Direct HTTPS requires both --ssl-certfile and --ssl-keyfile')
+            tls={}
+            if args.ssl_certfile:
+                if urlparse(settings.public_base_url).scheme!='https':
+                    parser.error('A direct HTTPS listener requires an HTTPS public_base_url')
+                try:
+                    context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                    # Never prompt on a service's stdin for an encrypted key password.
+                    context.load_cert_chain(args.ssl_certfile,args.ssl_keyfile,password=lambda:b'')
+                except (OSError,ssl.SSLError) as exc:
+                    raise ConfigurationError('The HTTPS certificate and private key could not be loaded') from exc
+                tls={'ssl_certfile':str(args.ssl_certfile),'ssl_keyfile':str(args.ssl_keyfile)}
             settings.validate(require_identity_secrets=True)
             from .product_server import create_product_server
 
@@ -275,6 +292,7 @@ def main(argv: list[str] | None = None) -> None:
                     proxy_headers=True,
                     forwarded_allow_ips="127.0.0.1",
                     access_log=False,  # Protocol access logs include OAuth callback query credentials.
+                    **tls,
                 )
             return
         dataset = None

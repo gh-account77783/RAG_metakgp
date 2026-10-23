@@ -11,6 +11,7 @@ import sys
 
 
 PATH_FIELDS = ("python", "chroma", "ollama", "config", "dotenv", "data_dir", "model_dir", "ollama_home")
+TLS_FIELDS = ('ssl_certfile','ssl_keyfile')
 ROLES = ('reader', 'worker', 'chroma', 'ollama')
 FIELDS = {"schema_version", "name", "user", *PATH_FIELDS, "reader_port", "chroma_port", "ollama_port",
           "cpu_quota_percent", *(role + '_memory_bytes' for role in ROLES)}
@@ -61,14 +62,15 @@ def service_lines(*, description, user, command, writable, environment, after,
 
 
 def validate(layout):
-    if not isinstance(layout, dict) or set(layout) != FIELDS or layout["schema_version"] != 1:
+    if (not isinstance(layout, dict) or not FIELDS<=set(layout)<=FIELDS|set(TLS_FIELDS)
+            or layout["schema_version"] != 1 or len(set(layout)&set(TLS_FIELDS)) not in {0,2}):
         raise ValueError("Expected the complete schema_version 1 service layout")
     if not re.fullmatch(r"graphmind-[a-z0-9][a-z0-9-]{0,39}", str(layout["name"])):
         raise ValueError("Service name must start with graphmind- and use lowercase letters/digits/hyphens")
     user = layout["user"]
     if not isinstance(user, str) or user == 'root' or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", user):
         raise ValueError("Choose a non-root service account")
-    for field in PATH_FIELDS:
+    for field in (*PATH_FIELDS,*(field for field in TLS_FIELDS if field in layout)):
         value = layout[field]; quote(value)
         path = PurePosixPath(value)
         if not path.is_absolute() or '..' in path.parts or str(path) == '/':
@@ -106,6 +108,7 @@ def render(layout):
         'MPLCONFIGDIR': str(data/'cache/matplotlib'),
     }
     app = [layout['python'], '-B', '-m', 'graphmind', '--config', layout['config'], '--dotenv', layout['dotenv']]
+    tls=[value for field in TLS_FIELDS if field in layout for value in ('--'+field.replace('_','-'),layout[field])]
     specs = {
         'ollama': ([layout['ollama'], 'serve'], [layout['ollama_home']], {
             'HOME': layout['ollama_home'], 'OLLAMA_MODELS': layout['model_dir'],
@@ -115,7 +118,7 @@ def render(layout):
         'chroma': ([layout['chroma'], 'run', '--path', str(data/'chroma'), '--host', '127.0.0.1',
                     '--port', str(layout['chroma_port'])], [str(data/'chroma')],
                     {'ANONYMIZED_TELEMETRY': 'False'}, []),
-        'reader': (app + ['serve', '--host', '127.0.0.1', '--port', str(layout['reader_port'])],
+        'reader': (app + ['serve', '--host', '127.0.0.1', '--port', str(layout['reader_port']),*tls],
                    [str(data)], app_environment, ['chroma', 'ollama']),
         'worker': (app + ['worker', '--poll-seconds', '5'], [str(data)], app_environment, ['chroma', 'ollama']),
     }
