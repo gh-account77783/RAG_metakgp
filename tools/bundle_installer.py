@@ -37,6 +37,13 @@ def lock_text(records: list[dict]) -> str:
                    for item in records)
 
 
+def reject_revoked_wheel(name: str, version: str) -> None:
+    # Upstream incident: https://docs.litellm.ai/blog/security-incident-oct-21-2026
+    # A previously approved hash cannot make withdrawn malicious bytes usable.
+    if name == 'litellm' and version.split('+', 1)[0] == '1.107.0':
+        raise ValueError('Revoked compromised distribution: litellm 1.107.0')
+
+
 def bundle_file(bundle: Path, relative: str) -> Path:
     if not isinstance(relative,str) or any(ord(c)<32 or c in '\\:' for c in relative):
         raise ValueError('Unsafe bundle path')
@@ -105,6 +112,7 @@ def verify_approved(bundle: Path, manifest_sha256: str) -> dict:
                 or type(item['size']) is not int or item['size']<=0):
             raise ValueError('Invalid pinned wheel identity')
         filename=item['filename']
+        reject_revoked_wheel(item['name'], item['version'])
         if (not isinstance(filename,str) or PurePosixPath(filename).name!=filename
                 or not filename.endswith('.whl') or filename in filenames or item['name'] in names):
             raise ValueError('Bundle needs one wheel per distribution')
@@ -124,6 +132,8 @@ def verify_approved(bundle: Path, manifest_sha256: str) -> dict:
 
 def install_verified(bundle: Path, environment: Path, manifest: dict) -> dict:
     """Shared installer for verified build-tool and standalone bootstrap entrypoints."""
+    for item in manifest['wheels']:
+        reject_revoked_wheel(item['name'], item['version'])
     bundle, environment = bundle.resolve(),environment.resolve()
     if environment.exists() or environment.is_relative_to(bundle) or bundle.is_relative_to(environment):
         raise ValueError('Installation requires a new environment outside the bundle')

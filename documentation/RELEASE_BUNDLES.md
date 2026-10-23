@@ -1,5 +1,12 @@
 # Native release bundles
 
+Bundles containing `litellm==1.107.0` are revoked because that release was
+[compromised](https://docs.litellm.ai/blog/security-incident-oct-21-2026).
+Current verification and installation tools reject it even when its retained
+hashes match. Do not execute an older bundled installer or Python from an exposed
+environment. Preserve evidence and rebuild on a clean host after incident response;
+an updated pin or installer does not remediate an already exposed host.
+
 P7 build tooling runs from a development checkout with CPython 3.13 and the
 existing constrained build/test dependencies. It is separate from the reader
 process. Installing GraphMind must not resolve or download code or weights at

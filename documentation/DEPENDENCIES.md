@@ -1,6 +1,6 @@
 # Dependency Inventory
 
-Status reconciled: 2026-10-22 (core and optional profiles)
+Status reconciled: 2026-10-23 (core and optional profiles)
 
 This inventory separates the installable GraphMind package from development-only
 legacy code and external model or service components. It records dependency facts;
@@ -83,8 +83,18 @@ application identity, reader, MCP, source and job boundaries.
 Apply `config/constraints/engines-py313.txt` with the core and Linux constraints
 when resolving any inference extra. Its 39 additional exact pins come from the
 combined native resolver closure, including `openai-agents==0.24.0` and
-`litellm==1.107.0`. This is a resolver input, not a complete hash lock. Use
+`litellm==1.106.2`. This is a resolver input, not a complete hash lock. Use
 [retained native bundles](RELEASE_BUNDLES.md) for repeatable offline installation.
+
+LiteLLM 1.107.0 was [compromised and withdrawn upstream](https://docs.litellm.ai/blog/security-incident-oct-21-2026).
+Do not install it from a retained wheelhouse or restore an environment containing
+it. Earlier hash-verified bundles containing that version are revoked: matching
+hashes and passing tests do not establish software safety. The constraint now
+uses the upstream-recommended 1.106.2; this change still requires fresh bundle
+qualification. If 1.107.0 was installed, do not start that environment's Python
+or pip. Follow the incident advisory for containment, credential response and
+rebuilding on a clean host; changing a dependency pin does not clean an exposed
+host.
 
 The reviewed x86-64 CPython 3.13 CPU artifacts and publisher hashes are in
 `config/artifacts/cpu-torch-cp313.json`. Supply those downloaded local wheels to

@@ -80,6 +80,13 @@ class ReleaseBundleTests(unittest.TestCase):
             install(self.bundle, environment)
         self.assertFalse(environment.exists())
 
+    def test_freeze_rejects_revoked_distribution_before_approving_bundle(self):
+        self.project()
+        self.wheel('litellm', version='1.107.0')
+        with self.assertRaisesRegex(ValueError, 'Revoked compromised distribution'):
+            freeze(self.bundle)
+        self.assertFalse((self.bundle / 'manifest.json').exists())
+
     def test_failed_install_retains_environment_without_success_receipt(self):
         self.project()
         freeze(self.bundle)

@@ -6,7 +6,7 @@ import sys
 import unittest
 
 from tests.contracts import test_release_bundle as fixtures
-from tools.bundle_installer import digest, verify_approved
+from tools.bundle_installer import digest, verify_approved, install_verified
 from tools.release_bundle import freeze, verify
 
 
@@ -76,3 +76,15 @@ class BundleInstallerTests(unittest.TestCase):
                 path.write_text(json.dumps({**self.manifest,**change}))
                 with self.assertRaises(ValueError):verify_approved(self.bundle,digest(path))
         with self.assertRaises(ValueError):verify_approved(self.bundle,'not-a-release-hash')
+
+    def test_revoked_distribution_fails_even_with_newly_approved_manifest_hash(self):
+        revoked={**self.manifest['wheels'][0], 'name':'litellm', 'version':'1.107.0'}
+        manifest={**self.manifest, 'wheels':[revoked, *self.manifest['wheels']]}
+        path=self.bundle/'manifest.json'
+        path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, 'Revoked compromised distribution'):
+            verify_approved(self.bundle,digest(path))
+        environment=self.bundle/'must-not-exist'
+        with self.assertRaisesRegex(ValueError, 'Revoked compromised distribution'):
+            install_verified(self.bundle,environment,manifest)
+        self.assertFalse(environment.exists())

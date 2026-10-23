@@ -17,9 +17,9 @@ from packaging.tags import sys_tags
 from packaging.utils import canonicalize_name, parse_wheel_filename
 
 try:
-    from tools.bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer, verify_notices, bundle_file
+    from tools.bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer, verify_notices, bundle_file, reject_revoked_wheel
 except ModuleNotFoundError:
-    from bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer, verify_notices, bundle_file
+    from bundle_installer import digest, native_target, pip_environment, lock_text, install_verified, verify_installer, verify_notices, bundle_file, reject_revoked_wheel
 
 
 PROJECT = "graphmind-rag-mcp"
@@ -29,6 +29,7 @@ def wheel_record(path: Path) -> dict:
     if path.is_symlink() or not path.is_file():
         raise ValueError("Wheel inputs must be regular files")
     name, version, _, tags = parse_wheel_filename(path.name)
+    reject_revoked_wheel(str(name), str(version))
     if not tags.intersection(sys_tags()):
         raise ValueError(f"Wheel is incompatible with this native target: {path.name}")
     with zipfile.ZipFile(path) as archive:
