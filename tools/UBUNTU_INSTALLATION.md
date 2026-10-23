@@ -181,3 +181,60 @@ This is a host operator workflow over the retained vendors and shared applicatio
 commands. It does not provision cloud resources, install global packages, certify
 clean-OS installation, or qualify browser, production rights, off-host recovery or
 all-platform acceptance. Record the actual native probe and artifact hashes.
+
+## Host-local backup, restore and update
+
+Keep backups and manifests in a root-owned mode0700 directory outside live
+state; files containing data/configuration must be mode0600. Inventory and hash
+the exact immutable Python/native/model artifacts separately. Back up protected
+configuration, realm/database state, TLS keys/CA, unit files/drop-ins and source
+state without printing them or adding them to release artifacts. Model weights
+and immutable binaries need their retained installation bundles, rather than
+another copy in each state snapshot. Capacity must cover the old release, new
+release, a consistent snapshot, restore staging and the application disk floor.
+
+For the single-node native layout:
+
+1. Check every submitted job and stop the worker after current work completes.
+   Stop the reader, Keycloak, Chroma, Neo4j and PostgreSQL before taking their
+   combined filesystem snapshot. Ollama can remain running when models are
+   immutable and no inference jobs are active. Preserve UID/GID, modes and every
+   file hash. Reject unexpected links/special files. Verify the archive members
+   and hashes before reporting backup success, then resume only those previously
+   active services in dependency order and check actual readiness.
+2. Restore into a separate protected staging tree and verify every member,
+   ownership and hash before swapping any live path. Stop all writers again;
+   retain the latest live trees for rollback. Keep reader and worker stopped
+   while starting restored database/identity backends. Preserve installation
+   identity and source/version IDs. An older snapshot can contain an enabled
+   account, a live grant or a source that was later deleted.
+3. Before reader exposure, reconcile reviewed post-backup account disables,
+   credential revocations and source tombstones against the latest retained
+   administrative decisions. Use the existing host `accounts` commands and
+   `delete --enqueue-only`/worker, rather than direct SQL edits or a second
+   authorization policy. Complete cleanup with the reader still stopped. Verify
+   deleted originals/old citations are denied, derived stores are cleaned, and
+   an unexpired old grant cannot regain access after restore or account re-enable.
+   Obtain a fresh grant for a protected source read. Without trustworthy latest
+   decisions, keep affected identities/sources quarantined instead of exposing
+   the restored installation.
+4. Audit all enabled engine heads against the same active source versions,
+   original-byte hashes and actual native stores. Check the shared application
+   manifest; a healthy HTTP listener alone is insufficient. Only then start the
+   reader and verify authenticated catalogue/fetch/page access. Retain failure
+   receipts and the previous live trees; roll back the swap if reconciliation or
+   audit fails. Never copy private backup contents into public test evidence.
+
+For a software update, qualify a new immutable Python environment from the
+reviewed offline bundle, then use `tools.ubuntu_release_files` to prepare the
+three Python-service overrides. Review hashes, stop affected writers and take
+a consistent protected snapshot first. Apply the reviewed overrides, reload
+systemd, restart Chroma then reader/worker and verify source/index/authentication
+checks. Exercise rollback to the retained prior environment and reapply the
+candidate. This procedure assumes compatible state; schema or native database
+upgrades need their separately reviewed migration/restore procedure.
+
+A host-local restore does not prove recovery after host loss. Off-host encrypted
+backup, separate-target recovery, certificate renewal and each required native
+platform need their own authorization and evidence. Do not promote a release
+from a filesystem copy or from deferred gates alone.

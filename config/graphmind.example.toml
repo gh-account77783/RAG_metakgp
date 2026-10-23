@@ -45,6 +45,9 @@ retrieval_seed_limit = 4
 retrieval_profile = "legacy"
 enabled_engines = ["graphmind"]
 # Add "tree_navigation" for text-bearing PDFs, or select it alone for vectorless use.
+# Add "multimodal" only with retained ColQwen2 weights and an image-capable
+# local answer_model or visual_answer_model. Each PDF needs its own visual index.
+visual_model_dir = ""
 # For the qualified hybrid recipe, set retrieval_profile="hybrid" and point to
 # an explicitly retained BAAI/bge-reranker-v2-m3 artifact directory. No auto download.
 reranker_dir = ""
@@ -60,6 +63,8 @@ query_queue_timeout_seconds = 1.0
 # Public reader/MCP service and the bundled Keycloak realm. Production URLs use HTTPS.
 public_base_url = "https://rag.example.com"
 identity_issuer_url = "https://auth.example.com/realms/graphmind"
+# Optional explicit private identity CA PEM; public certifi roots remain enabled.
+identity_ca_file = ""
 identity_browser_client_id = "graphmind-web"
 identity_resource_client_id = "graphmind-resource"
 identity_admin_client_id = "graphmind-admin"
