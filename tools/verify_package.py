@@ -29,7 +29,7 @@ BUILD_FILES = (
     "deploy/keycloak/graphmind-user-profile.json", "deploy/acceptance/README.md",
     "tools/run_real_acceptance.py", "tools/mcp_acceptance.py",
     "tools/ubuntu_service_files.py", "tools/ubuntu_backend_files.py", "tools/ubuntu_release_files.py", "deploy/native/README.md",
-    "tools/ubuntu_installation.py", "tools/UBUNTU_INSTALLATION.md",
+    "tools/ubuntu_installation.py", "tools/ubuntu_configuration.py", "tools/UBUNTU_INSTALLATION.md",
     "deploy/native/ubuntu.example.json", "deploy/native/ubuntu.backends.example.json",
     "tools/build_keycloak_recovery.py", "deploy/keycloak/graphmind-recovery.json",
     "deploy/keycloak/nginx-recovery.conf.example",

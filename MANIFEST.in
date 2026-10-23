@@ -15,7 +15,7 @@ include deploy/keycloak/recovery-src/META-INF/services/org.keycloak.events.Event
 include deploy/acceptance/README.md
 include deploy/native/README.md deploy/native/ubuntu.example.json deploy/native/ubuntu.backends.example.json
 include tools/ubuntu_service_files.py tools/ubuntu_backend_files.py tools/ubuntu_release_files.py
-include tools/ubuntu_installation.py tools/UBUNTU_INSTALLATION.md
+include tools/ubuntu_installation.py tools/ubuntu_configuration.py tools/UBUNTU_INSTALLATION.md
 include tools/run_real_acceptance.py tools/mcp_acceptance.py tools/build_keycloak_recovery.py
 include tools/build_assets.py
 include tools/frontend_assets.py
