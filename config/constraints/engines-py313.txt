@@ -1,11 +1,13 @@
 # Combined optional tree/rerank/visual profile, CPython 3.13 x86-64.
 # Generated from native Windows/Ubuntu resolver reports on 2026-10-21.
+# LiteLLM/OpenAI compatibility rollback resolved on 2026-10-23.
 # Apply alongside core-py313.txt and linux-py313.txt.
 # CPU-local builds require the reviewed artifacts in config/artifacts/cpu-torch-cp313.json.
 # This is a resolver input; generate and retain native complete hash-checked bundles.
 boto3==1.43.116
 botocore==1.43.116
 cloudpickle==3.1.2
+distro==1.9.0
 fastuuid==0.14.0
 griffelib==2.4.0
 h2==4.4.1

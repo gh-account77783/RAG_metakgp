@@ -82,13 +82,15 @@ The base install does not require these libraries. Each profile shares the same
 application identity, reader, MCP, source and job boundaries.
 
 Apply `config/constraints/engines-py313.txt` with the core and Linux constraints
-when resolving any inference extra. Its 39 additional exact pins come from the
+when resolving any inference extra. Its 40 additional exact pins come from the
 combined resolver closure, now including `openai-agents==0.20.0`,
 `openai==2.54.0` and `litellm==1.106.2`. LiteLLM's published metadata requires
 OpenAI >=2.20,<3; Agents 0.20 accepts OpenAI >=2.45,<3 and MCP <3. The former
 Agents 0.24/OpenAI 3 pins cannot resolve with that LiteLLM release. This is a
 resolver input, not a complete hash lock. Use
 [retained native bundles](RELEASE_BUNDLES.md) for repeatable offline installation.
+The OpenAI 2.x rollback also restores its `distro==1.9.0` dependency; it is pinned
+in the engine constraints rather than left to float during installation.
 
 LiteLLM 1.107.0 was [compromised and withdrawn upstream](https://docs.litellm.ai/blog/security-incident-oct-21-2026).
 Do not install it from a retained wheelhouse or restore an environment containing
