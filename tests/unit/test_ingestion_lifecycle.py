@@ -40,7 +40,8 @@ def make_settings(root: Path, **overrides) -> Settings:
         "chunk_size": 96,
         "chunk_overlap": 12,
         "embedding_dimension": 64,
-        "job_lease_seconds": 10,
+        # Functional fixtures use the production lease; expiry tests set their own.
+        "job_lease_seconds": 60,
         "parser_timeout_seconds": 5,
     }
     values.update(overrides)
