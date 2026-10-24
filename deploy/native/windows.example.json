@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "name": "graphmind-example",
+  "python": "C:\\GraphMind\\releases\\candidate\\Scripts\\python.exe",
+  "chroma": "C:\\GraphMind\\releases\\candidate\\Scripts\\chroma.exe",
+  "ollama": "C:\\GraphMind\\native\\ollama\\ollama.exe",
+  "config": "C:\\GraphMind\\configuration\\graphmind.toml",
+  "dotenv": "C:\\GraphMind\\configuration\\reader.env",
+  "data_dir": "C:\\GraphMind\\state\\application",
+  "model_dir": "C:\\GraphMind\\models\\ollama",
+  "ollama_home": "C:\\GraphMind\\state\\ollama",
+  "reader_port": 21800,
+  "chroma_port": 21801,
+  "ollama_port": 21435,
+  "ssl_certfile": "C:\\GraphMind\\configuration\\tls\\chain.pem",
+  "ssl_keyfile": "C:\\GraphMind\\configuration\\tls\\key.pem",
+  "memory_bytes": {
+    "postgresql": 536870912,
+    "keycloak": 2147483648,
+    "neo4j": 2147483648,
+    "ollama": 12884901888,
+    "chroma": 1073741824,
+    "reader": 6442450944,
+    "worker": 6442450944
+  },
+  "backends": {
+    "postgresql": {
+      "command": ["C:\\GraphMind\\native\\postgresql\\bin\\postgres.exe", "-D", "C:\\GraphMind\\state\\postgresql\\data"],
+      "environment": {},
+      "environment_file": null,
+      "cwd": "C:\\GraphMind\\state\\postgresql",
+      "state_dir": "C:\\GraphMind\\state\\postgresql",
+      "stop_command": ["C:\\GraphMind\\native\\postgresql\\bin\\pg_ctl.exe", "stop", "-D", "C:\\GraphMind\\state\\postgresql\\data", "-m", "fast", "-w", "-t", "90"]
+    },
+    "keycloak": {
+      "command": ["C:\\GraphMind\\native\\jdk21\\bin\\java.exe", "-Xms128m", "-Xmx1024m", "-Dkc.home.dir=C:\\GraphMind\\native\\keycloak", "-Djboss.server.config.dir=C:\\GraphMind\\native\\keycloak\\conf", "-Djava.util.logging.manager=org.jboss.logmanager.LogManager", "-jar", "C:\\GraphMind\\native\\keycloak\\lib\\quarkus-run.jar", "start", "--optimized"],
+      "environment": {"JAVA_HOME": "C:\\GraphMind\\native\\jdk21"},
+      "environment_file": "C:\\GraphMind\\configuration\\keycloak.environment.json",
+      "cwd": "C:\\GraphMind\\state\\keycloak",
+      "state_dir": "C:\\GraphMind\\state\\keycloak",
+      "stop_command": null
+    },
+    "neo4j": {
+      "command": ["C:\\GraphMind\\native\\jdk21\\bin\\java.exe", "-Xms128m", "-Xmx1024m", "-cp", "C:\\GraphMind\\native\\neo4j\\lib\\*", "org.neo4j.server.CommunityEntryPoint", "--home-dir=C:\\GraphMind\\native\\neo4j", "--config-dir=C:\\GraphMind\\configuration\\neo4j"],
+      "environment": {"JAVA_HOME": "C:\\GraphMind\\native\\jdk21", "NEO4J_HOME": "C:\\GraphMind\\native\\neo4j", "NEO4J_CONF": "C:\\GraphMind\\configuration\\neo4j"},
+      "environment_file": null,
+      "cwd": "C:\\GraphMind\\state\\neo4j",
+      "state_dir": "C:\\GraphMind\\state\\neo4j",
+      "stop_command": null
+    }
+  }
+}
