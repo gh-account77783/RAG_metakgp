@@ -27,7 +27,7 @@ class DependencyInventoryTests(unittest.TestCase):
                     name = canonicalize_name(requirement.name)
                     self.assertNotIn(name, pins)
                     pins[name] = str(requirement.specifier).removeprefix("==")
-        for extra in ("tree", "rerank", "visual"):
+        for extra in ("tree", "rerank", "visual", "windows-service"):
             for raw in project["project"]["optional-dependencies"][extra]:
                 requirement = Requirement(raw)
                 self.assertTrue(str(requirement.specifier).startswith("=="))

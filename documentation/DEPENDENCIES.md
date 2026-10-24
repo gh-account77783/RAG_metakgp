@@ -81,6 +81,14 @@ navigation as implemented; visual catalogue qualification remains separate.
 The base install does not require these libraries. Each profile shares the same
 application identity, reader, MCP, source and job boundaries.
 
+The native Windows `windows-service` extra explicitly supplies `pywin32==312`
+with a Windows platform marker, matching the core constraint. A separate retained
+maintenance interpreter uses it for the SCM dispatcher, per-service virtual
+accounts, NTFS permissions and owned Job Objects. It adds no Linux runtime
+dependency and requires no global pywin32 post-install registration. See the
+[Windows service procedure](../tools/WINDOWS_INSTALLATION.md); package contracts
+alone do not qualify Windows services, model capacity, reboot or recovery.
+
 Apply `config/constraints/engines-py313.txt` with the core and Linux constraints
 when resolving any inference extra. Its 40 additional exact pins come from the
 combined resolver closure, now including `openai-agents==0.20.0`,

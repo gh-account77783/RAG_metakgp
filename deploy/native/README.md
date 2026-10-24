@@ -88,8 +88,9 @@ bounded ingestion workload. Reader/worker data are writable; release/configurati
 and model weights remain protected by the filesystem namespace and ordinary
 permissions. This is process hardening, not a parser security sandbox.
 
-Native Windows service installation remains a separate target; these systemd
-files do not substitute for Windows 11 or Server 2025 acceptance.
+Native Windows uses the separate [SCM installation procedure](../../tools/WINDOWS_INSTALLATION.md)
+and `windows.example.json`. These systemd files do not substitute for Windows 11
+or Server 2025 acceptance.
 
 ## Python software update and rollback
 

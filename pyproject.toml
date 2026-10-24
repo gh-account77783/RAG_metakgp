@@ -20,6 +20,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+windows-service = ["pywin32==312; sys_platform == 'win32'"]
 test = ["build==1.6.0", "pageindex==0.4.4", "pillow==13.0.0"]
 tree = ["pageindex==0.4.4", "pillow==13.0.0"]
 rerank = ["sentence-transformers==6.1.0", "torch==2.14.1"]
@@ -57,5 +58,5 @@ build_py = "tools.build_assets.BuildPy"
 "share/graphmind/deploy/keycloak/themes/graphmind/email" = ["deploy/keycloak/themes/graphmind/email/theme.properties"]
 "share/graphmind/deploy/keycloak/themes/graphmind/email/messages" = ["deploy/keycloak/themes/graphmind/email/messages/messages_en.properties"]
 "share/graphmind/deploy/acceptance" = ["deploy/acceptance/README.md"]
-"share/graphmind/deploy/native" = ["deploy/native/README.md", "deploy/native/ubuntu.example.json", "deploy/native/ubuntu.backends.example.json"]
-"share/graphmind/tools" = ["tools/run_real_acceptance.py", "tools/mcp_acceptance.py", "tools/build_keycloak_recovery.py", "tools/ubuntu_service_files.py", "tools/ubuntu_backend_files.py", "tools/ubuntu_release_files.py", "tools/ubuntu_installation.py", "tools/ubuntu_configuration.py", "tools/UBUNTU_INSTALLATION.md"]
+"share/graphmind/deploy/native" = ["deploy/native/README.md", "deploy/native/ubuntu.example.json", "deploy/native/ubuntu.backends.example.json", "deploy/native/windows.example.json"]
+"share/graphmind/tools" = ["tools/run_real_acceptance.py", "tools/mcp_acceptance.py", "tools/build_keycloak_recovery.py", "tools/ubuntu_service_files.py", "tools/ubuntu_backend_files.py", "tools/ubuntu_release_files.py", "tools/ubuntu_installation.py", "tools/ubuntu_configuration.py", "tools/UBUNTU_INSTALLATION.md", "tools/windows_service_files.py", "tools/windows_service_host.py", "tools/windows_installation.py", "tools/windows_operations.py", "tools/WINDOWS_INSTALLATION.md", "tools/WINDOWS_OPERATIONS.md"]
