@@ -10,6 +10,7 @@ from typing import Protocol
 
 from .rag.components.contracts import AdapterStatus
 from .errors import DependencyUnavailableError
+from .private_paths import mkdir_private
 
 
 class FileStore(Protocol):
@@ -43,7 +44,7 @@ class PrivateFileStore:
     ) -> str:
         directory = self.files_dir / document_id / version_id
         try:
-            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            mkdir_private(directory, self.data_dir, exist_ok=True)
             destination = directory / self._source_name(suffix)
             temporary = directory / f".original.{uuid.uuid4().hex}.tmp"
             temporary.write_bytes(content)
@@ -83,7 +84,7 @@ class PrivateFileStore:
 
     def readiness(self) -> AdapterStatus:
         try:
-            self.files_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            mkdir_private(self.files_dir, self.data_dir, exist_ok=True)
             probe = self.files_dir / f".readiness-{uuid.uuid4().hex}"
             probe.write_bytes(b"")
             probe.unlink()

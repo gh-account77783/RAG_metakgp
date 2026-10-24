@@ -11,6 +11,7 @@ from typing import Any, Mapping
 from urllib.parse import urlparse
 
 from .errors import ConfigurationError
+from .private_paths import mkdir_private
 
 
 _ENV_KEYS = {
@@ -552,7 +553,7 @@ class Settings:
             self.backups_dir,
         ):
             try:
-                path.mkdir(parents=True, exist_ok=True, mode=0o700)
+                mkdir_private(path, self.data_dir, exist_ok=True)
                 probe = path / ".graphmind-write-check"
                 probe.write_bytes(b"")
                 probe.unlink()

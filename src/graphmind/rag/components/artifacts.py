@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 
 from ...errors import ManifestUnavailableError, PublicationError
+from ...private_paths import mkdir_private
 from .contracts import Job
 from .index_contracts import EngineIndex, IndexInventory, IndexStatus
 from .indexes import IndexRepository
@@ -80,9 +81,9 @@ class DerivedArtifactStore:
             raise PublicationError("Derived manifest exceeds its byte limit")
         receipt = ArtifactManifest(f"derived/{index_id}/manifest.json", _digest(manifest), inventory)
         destination = self._directory(index_id)
-        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        mkdir_private(self.root, self.root.parent, exist_ok=True)
         temporary = self.root / f".build-{index_id}-{uuid.uuid4().hex}"
-        temporary.mkdir(mode=0o700)
+        mkdir_private(temporary, self.root.parent)
         try:
             for name, content in files.items():
                 (temporary / name).write_bytes(content)
