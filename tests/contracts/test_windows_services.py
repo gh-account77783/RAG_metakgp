@@ -11,7 +11,7 @@ from unittest.mock import patch
 from tests.support.paths import REPOSITORY
 from tools.windows_service_files import prepare, render, validate_spec
 from tools.windows_installation import reviewed, service_command
-from tools.windows_service_host import child_environment, main
+from tools.windows_service_host import child_environment, clean_child_stop, main
 
 
 class WindowsServicesTests(unittest.TestCase):
@@ -76,6 +76,24 @@ class WindowsServicesTests(unittest.TestCase):
             spec['environment_file'] = str(secret_file)
             with self.assertRaises(ValueError):
                 child_environment(spec, {})
+
+    def test_requested_java_interrupt_exit_is_distinct_from_crash_and_other_failures(self):
+        specs = render(self.layout())
+        for role in ('keycloak', 'neo4j'):
+            spec = specs['graphmind-example-'+role]
+            self.assertTrue(clean_child_stop(spec, 130, stop_requested=True, ctrl_c_sent=True))
+            self.assertTrue(clean_child_stop(spec, 0, stop_requested=True, ctrl_c_sent=False))
+            self.assertFalse(clean_child_stop(spec, 130, stop_requested=False, ctrl_c_sent=True))
+            self.assertFalse(clean_child_stop(spec, 130, stop_requested=True, ctrl_c_sent=False))
+            for code in (1, 2, 143, 0xC000013A, -1073741510):
+                with self.subTest(role=role, code=code):
+                    self.assertFalse(clean_child_stop(spec, code, stop_requested=True, ctrl_c_sent=True))
+            wrong_executable = {**spec, 'command': [r'C:\\native\\python.exe']}
+            self.assertFalse(clean_child_stop(wrong_executable, 130, stop_requested=True, ctrl_c_sent=True))
+        for role in ('reader', 'worker', 'chroma', 'postgresql', 'ollama'):
+            spec = specs['graphmind-example-'+role]
+            self.assertFalse(clean_child_stop(spec, 130, stop_requested=True, ctrl_c_sent=True))
+            self.assertFalse(clean_child_stop(spec, 0, stop_requested=False, ctrl_c_sent=True))
 
     def test_restored_reader_and_worker_fail_before_dispatch_while_sealed(self):
         with tempfile.TemporaryDirectory() as temp:

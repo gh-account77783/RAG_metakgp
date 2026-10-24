@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import subprocess
 import sys
 import time
@@ -36,6 +36,13 @@ def child_environment(spec, inherited=None):
     if any(key in result for key in ('PYTHONPATH', 'PYTHONHOME', 'GRAPHMIND_IDENTITY_ADMIN_CLIENT_SECRET')):
         raise ValueError('Service environment contains a forbidden interpreter/admin override')
     return result
+
+
+def clean_child_stop(spec, code, *, stop_requested, ctrl_c_sent):
+    """JDK's INT handler exits 128+SIGINT after its shutdown hooks complete."""
+    return stop_requested and (code == 0 or (
+        code == 130 and ctrl_c_sent and spec['role'] in ('keycloak', 'neo4j')
+        and PureWindowsPath(spec['command'][0]).name.casefold() == 'java.exe'))
 
 
 def run_service(spec):
@@ -119,6 +126,7 @@ def run_service(spec):
                 outcome = win32event.WaitForMultipleObjects(handles, False, win32event.INFINITE)
                 if outcome == win32event.WAIT_OBJECT_0:
                     deadline = time.monotonic() + spec['stop_timeout_seconds']
+                    ctrl_c_sent = False
                     if spec['stop_command'] is not None:
                         # Vendor stop tools (e.g. pg_ctl) are bounded and never invoke a shell.
                         # Console shutdown is still attempted when the vendor command fails.
@@ -130,6 +138,7 @@ def run_service(spec):
                             pass
                     if win32event.WaitForSingleObject(process, 0) == win32event.WAIT_TIMEOUT:
                         win32api.GenerateConsoleCtrlEvent(win32con.CTRL_C_EVENT, 0)
+                        ctrl_c_sent = True
                     while win32event.WaitForSingleObject(process, 1000) == win32event.WAIT_TIMEOUT:
                         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING, waitHint=30000)
                         if time.monotonic() >= deadline:
@@ -138,7 +147,9 @@ def run_service(spec):
                             win32event.WaitForSingleObject(process, 10000)
                             raise RuntimeError('Owned service child required forced termination')
                     code = win32process.GetExitCodeProcess(process)
-                    if code:
+                    win32file.WriteFile(log, (spec['name'] + ': requested child exit code=' + str(code)
+                        + ' ctrl_c_sent=' + str(ctrl_c_sent).lower() + '\r\n').encode('utf-8'))
+                    if not clean_child_stop(spec, code, stop_requested=True, ctrl_c_sent=ctrl_c_sent):
                         raise RuntimeError('Owned service child stopped with a failure: ' + str(code))
                     while win32job.QueryInformationJobObject(job, win32job.JobObjectBasicAccountingInformation)['ActiveProcesses']:
                         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING, waitHint=30000)
