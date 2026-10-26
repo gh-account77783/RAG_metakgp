@@ -3,9 +3,32 @@
 Linux Docker Compose is GraphMind's default deployment route. The native
 [Windows Server](../../tools/WINDOWS_INSTALLATION.md) and
 [Ubuntu](../../tools/UBUNTU_INSTALLATION.md) paths remain alternatives.
-This is a **deployment candidate**: code/configuration checks do not establish
-an image build, running stack, login, inference, restart or release acceptance.
-Complete the bounded runtime smoke below before advertising tested support.
+This remains a **deployment candidate**. The bounded runtime smoke below passed
+for one Linux host and one one-page source, but it does not establish production
+readiness or full release acceptance. Follow the recorded limits when describing
+what has been tested.
+
+### Bounded runtime smoke - 26 October 2026
+
+The first bounded runtime smoke passed on Ubuntu 24.04.4 x86-64 (4 vCPU,
+about 16 GiB RAM) using source revision `329794fbd3b32b7077708d4d8e01bf8990385416`.
+The Linux wheelhouse was reused offline, both custom images built, and the
+declared dependency images pulled. An isolated private HTTPS stack passed its
+health checks and canonical identity-policy read-back. One owned PDF was ready
+in all three engines. A verified synthetic reader passed PKCE and MCP discovery,
+catalogue, search, fetch and original-page retrieval. One grounded answer and
+current page citation passed per engine. A container down/up preserved the same
+source hash, three index heads and successful first-attempt job; authenticated
+MCP reads passed after restart. All answer calls used retained local models.
+
+This result covers one one-page PDF and one question per engine. Those three
+answers took about 95 seconds for GraphMind, 142 seconds for tree navigation,
+and 162 seconds for multimodal on this host. The smoke used a host-private test
+certificate and loopback port 24443; it did not test the public DNS/ACME/browser
+path, frozen accuracy thresholds, host reboot, installer/update lifecycle,
+backup/restore, other operating systems or production readiness. Its nine
+named volumes and images were retained after stopping the isolated stack. Keep
+those limits separate from full release qualification.
 
 ## Prerequisites and artifacts
 
