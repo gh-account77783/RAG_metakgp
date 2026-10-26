@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient, ApiError } from "../src/api.ts";
+import { ApiClient, ApiError, isAuthenticationLoss } from "../src/api.ts";
 
 const response = (status, payload) => new Response(JSON.stringify(payload), {status, headers: {"Content-Type": "application/json"}});
 
@@ -30,12 +30,21 @@ test("only pre-execution authentication failure can refresh and replay a request
 });
 
 test("revocation and service failures never repeat model execution", async () => {
-  for (const [status, error] of [[401, "authorization_revoked"], [503, "provider_timeout"]]) {
+  for (const [status, error] of [[401, "authorization_revoked"], [401, "authentication_expired"],
+    [403, "csrf_denied"], [503, "provider_timeout"]]) {
     let calls = 0;
     const client = new ApiClient(async () => { calls++; return response(status, {error}); }, () => "csrf");
     await assert.rejects(client.post("/api/ask", {}), problem => problem instanceof ApiError && problem.code === error);
     assert.equal(calls, 1);
   }
+});
+
+test("only explicit authentication loss clears protected reader state", () => {
+  for (const code of ["authentication_required", "authentication_expired", "authorization_revoked"]) {
+    assert.equal(isAuthenticationLoss(new ApiError(code, "sign in again", 401)), true);
+  }
+  assert.equal(isAuthenticationLoss(new ApiError("csrf_denied", "request rejected", 403)), false);
+  assert.equal(isAuthenticationLoss(new ApiError("identity_unavailable", "retry", 503)), false);
 });
 
 test("concurrent expired requests share renewal; cancellation prevents replay", async () => {

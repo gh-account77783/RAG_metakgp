@@ -1,13 +1,12 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { ApiClient, ApiError } from "./api";
+import { ApiClient, ApiError, isAuthenticationLoss } from "./api";
 import { AnswerPanel, DocumentPicker, EnginePicker, SourcePanel } from "./components";
 import type { Preview } from "./components";
 import type { Answer, Catalog, Citation, EngineId } from "./types";
 import "./style.css";
 
 const api = new ApiClient();
-const authLost = (error: unknown) => error instanceof ApiError && [401, 403].includes(error.status);
 const message = (error: unknown) => error instanceof ApiError ? error.message : "Request failed. Please retry.";
 
 function Reader({email}: {email: string}) {
@@ -38,7 +37,7 @@ function Reader({email}: {email: string}) {
   }
   function reset() { cancel(); clearSource(); setAnswer(null); }
   function failed(error: unknown) {
-    if (authLost(error)) { reset(); setSignedOut(true); }
+    if (isAuthenticationLoss(error)) { reset(); setSignedOut(true); }
     setStatus(message(error));
   }
 

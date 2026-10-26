@@ -35,7 +35,7 @@ SOFTWARE.
 
 
 ========================================================================
-@rolldown/binding-linux-x64-gnu 1.2.15
+@rolldown/binding-win32-x64-msvc 1.2.15
 Declared license: MIT
 
 No separate root license/notice text was present in this npm artifact.
@@ -132,7 +132,7 @@ LICENSE
 
 
 ========================================================================
-@typescript/typescript-linux-x64 7.0.2
+@typescript/typescript-win32-x64 7.0.2
 Declared license: Apache-2.0
 
 
@@ -1272,7 +1272,7 @@ defined by the Mozilla Public License, v. 2.0.
 
 
 ========================================================================
-lightningcss-linux-x64-gnu 1.33.0
+lightningcss-win32-x64-msvc 1.33.0
 Declared license: MPL-2.0
 
 

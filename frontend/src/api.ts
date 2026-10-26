@@ -9,6 +9,14 @@ export class ApiError extends Error {
   }
 }
 
+const AUTHENTICATION_ERRORS = new Set([
+  "authentication_required", "authentication_expired", "authorization_revoked",
+]);
+
+export function isAuthenticationLoss(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 401 && AUTHENTICATION_ERRORS.has(error.code);
+}
+
 function csrf(): string {
   const value = document.cookie.split("; ").find(item => item.startsWith("graphmind_csrf="));
   return decodeURIComponent(value?.slice("graphmind_csrf=".length) ?? "");
