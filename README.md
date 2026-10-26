@@ -2,6 +2,15 @@
 
 GraphMind is a self-hosted document RAG service backed by Chroma and a Neo4j document-reference graph. The installable package provides five-format ingestion, local/hosted answers, authenticated browser reading and remote MCP. One Keycloak authority, active-account checks and a shared reader service protect both interfaces.
 
+## Deployment
+
+The default deployment route is [Linux Docker Compose](deploy/docker/README.md),
+using an approved offline Python bundle, retained local models and persistent
+volumes. Container code/configuration is provided; live image build, startup,
+authentication, three-engine answers and restart acceptance remain unverified.
+The existing [native Windows Server](tools/WINDOWS_INSTALLATION.md) and
+[native Ubuntu](tools/UBUNTU_INSTALLATION.md) installation paths remain available.
+
 ## Current validation boundary
 
 As of 2026-10-21, the agreed P5/P6 functional end-to-end checkpoint and bounded

@@ -3,6 +3,7 @@
 - [Architecture and repository ownership](ARCHITECTURE.md)
 - [Browser, identity and MCP contract](AUTH_AND_MCP.md)
 - [Dependencies and qualification boundaries](DEPENDENCIES.md)
+- [Default Linux Docker Compose deployment](../deploy/docker/README.md)
 - [Keycloak bootstrap](../deploy/keycloak/README.md)
 - [Real-service acceptance](../deploy/acceptance/README.md)
 

@@ -190,6 +190,17 @@ render bounded PNGs rather than executing document content.
 
 ## Assets and builds
 
+The default Linux Docker Compose deployment packages the same application from
+an approved offline bundle; its launcher delegates to the existing CLI. Native
+installation tooling remains available. Container backends/applications share
+one private network namespace and retain loopback listeners, preserving the
+existing local-inference, Chroma and proxy trust checks. Only the namespace's
+80/443 mappings are published, with Caddy gated on canonical identity-policy
+setup. App data and the inference lock are shared by reader/worker/host CLI;
+Chroma owns a separate persistence volume. Models/imports are read-only mounts.
+See [Docker deployment](../deploy/docker/README.md) for secret boundaries and
+the still-unqualified image/runtime/restart scope.
+
 `frontend/` owns the React/TypeScript reader components and common API client.
 Its pinned Vite build generates static CSS/JavaScript in `assets/web/`, alongside
 third-party notices and a source/output hash manifest. See `frontend/README.md`

@@ -1,5 +1,15 @@
 # Dependency Inventory
 
+The [Docker deployment candidate](../deploy/docker/README.md) reuses the frozen
+Linux Python bundle and retained model inputs. Its default image families are
+Python 3.13.17/bookworm, PostgreSQL 17.11, Keycloak 26.7.5, Neo4j Community
+2026.04.0, Ollama 0.34.0 and Caddy 2.11.7; the existing Keycloak provider is
+built with Temurin 21.0.12.1. Version tags and Debian build packages have not
+received container digest/OS inventory/runtime qualification. That remains
+separate from existing native results and Python wheel hashes. No model weights
+are included or automatically downloaded; final image/software/model/data
+rights and notices remain part of release qualification.
+
 Status reconciled: 2026-10-23 (core and optional profiles)
 
 This inventory separates the installable GraphMind package from development-only
