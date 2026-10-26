@@ -9,6 +9,7 @@ import json
 import logging
 import secrets
 import threading
+import time
 from contextlib import suppress
 from contextvars import ContextVar
 from typing import Any
@@ -269,8 +270,80 @@ async def _browser_principal(
     return (token, principal) if principal is not None else None
 
 
-async def _still_authorized(token: str, authority: IdentityAuthority) -> bool:
-    return await authority.verify_token(token) is not None
+def _same_identity(original: IdentityPrincipal, current: IdentityPrincipal) -> bool:
+    return (
+        original.subject == current.subject
+        and original.email.casefold() == current.email.casefold()
+        and original.client_id == current.client_id
+        and original.issuer.rstrip("/") == current.issuer.rstrip("/")
+        and set(original.scopes) == set(current.scopes)
+        and set(original.audience) == set(current.audience)
+    )
+
+
+def _expired(principal: IdentityPrincipal) -> bool:
+    return principal.expires_at is not None and principal.expires_at <= int(time.time())
+
+
+async def _post_work_identity(
+    token: str, original: IdentityPrincipal, authority: IdentityAuthority
+) -> tuple[IdentityPrincipal | None, str | None]:
+    current = await authority.verify_token(token)
+    if current is None:
+        return None, "expired" if _expired(original) else "revoked"
+    if not _same_identity(original, current):
+        return None, "revoked"
+    return current, None
+
+
+async def _authorize_browser_result(
+    request: Request,
+    token: str,
+    original: IdentityPrincipal,
+    authority: IdentityAuthority,
+    settings: Settings,
+) -> tuple[Response | None, Any | None]:
+    _, state = await _post_work_identity(token, original, authority)
+    if state is None:
+        return None, None
+    if state == "revoked":
+        response = _error(401, "authorization_revoked", "Account access was revoked")
+        _clear_auth_cookies(response, settings)
+        return response, None
+
+    refresh_token = request.cookies.get(REFRESH_COOKIE, "")
+    if not refresh_token:
+        response = _error(401, "authentication_expired", "Your session expired. Sign in again.")
+        _clear_auth_cookies(response, settings)
+        return response, None
+    try:
+        tokens = await authority.refresh(refresh_token)
+    except IdentityGrantRejectedError:
+        response = _error(401, "authentication_expired", "Session renewal failed. Sign in again.")
+        _clear_auth_cookies(response, settings)
+        return response, None
+    except IdentityError:
+        return _error(503, "identity_unavailable", "Session renewal is temporarily unavailable"), None
+
+    try:
+        renewed = await authority.verify_token(tokens.access_token)
+    except IdentityError:
+        return _error(503, "identity_unavailable", "Session renewal is temporarily unavailable"), None
+    if renewed is None:
+        response = _error(401, "authentication_expired", "Session renewal failed. Sign in again.")
+        _clear_auth_cookies(response, settings)
+        return response, None
+    if not _same_identity(original, renewed):
+        response = _error(401, "authorization_revoked", "Account access changed during this request")
+        _clear_auth_cookies(response, settings)
+        return response, None
+    return None, tokens
+
+
+def _finish_browser_response(response: Response, settings: Settings, tokens: Any | None) -> Response:
+    if tokens is not None:
+        _set_token_cookies(response, settings, tokens)
+    return _security_headers(response)
 
 
 def _transport_security(settings: Settings) -> TransportSecuritySettings:
@@ -366,13 +439,15 @@ def create_product_server(
             raise ToolError("authorization_denied")
         return access.token, principal
 
-    async def checked_result(token: str, function, *args, **kwargs):
+    async def checked_result(token: str, principal: IdentityPrincipal, function, *args, **kwargs):
         result = await reader_work(function, *args, **kwargs)
         try:
-            still_authorized = await _still_authorized(token, selected_authority)
+            _, state = await _post_work_identity(token, principal, selected_authority)
         except IdentityError as exc:
             raise ToolError("identity_unavailable") from exc
-        if not still_authorized:
+        if state == "expired":
+            raise ToolError("authentication_expired")
+        if state == "revoked":
             raise ToolError("authorization_revoked")
         reader.validate_result(result)
         return result
@@ -380,9 +455,9 @@ def create_product_server(
     @server.tool(name="list_documents", structured_output=True)
     async def list_documents() -> dict[str, Any]:
         """List configured engines and active documents with their index readiness."""
-        token, _ = await mcp_token()
+        token, principal = await mcp_token()
         try:
-            return await checked_result(token, reader.catalog)
+            return await checked_result(token, principal, reader.catalog)
         except (GraphMindError, ValueError) as exc:
             raise ToolError(getattr(exc, "code", "invalid_request")) from exc
 
@@ -391,9 +466,9 @@ def create_product_server(
         name="original-pdf-page", mime_type="image/png",
     )
     async def original_pdf_page(document_id: str, version_id: str, page_number: int) -> bytes:
-        token, _ = await mcp_token()
+        token, principal = await mcp_token()
         try:
-            result = await checked_result(token, reader.fetch_asset, document_id,
+            result = await checked_result(token, principal, reader.fetch_asset, document_id,
                                           version_id=version_id, page_number=page_number)
             return result["content"]
         except (GraphMindError, ValueError) as exc:
@@ -403,9 +478,9 @@ def create_product_server(
     async def search_documents(query: str, limit: int = 8, engine_id: str = "graphmind",
                                document_ids: list[str] | None = None) -> dict[str, Any]:
         """Search active documents and return evidence for client-side synthesis."""
-        token, _ = await mcp_token()
+        token, principal = await mcp_token()
         try:
-            return await checked_result(token, reader.search_documents, query, limit=limit,
+            return await checked_result(token, principal, reader.search_documents, query, limit=limit,
                                         engine_id=engine_id, document_ids=document_ids or ())
         except (GraphMindError, ValueError) as exc:
             raise ToolError(getattr(exc, "code", "invalid_request")) from exc
@@ -417,10 +492,10 @@ def create_product_server(
         max_chars: int = 12_000,
     ) -> dict[str, Any]:
         """Fetch text from one currently active document using opaque identifiers."""
-        token, _ = await mcp_token()
+        token, principal = await mcp_token()
         try:
             return await checked_result(
-                token,
+                token, principal,
                 reader.fetch_document,
                 document_id,
                 version_id=version_id,
@@ -433,9 +508,9 @@ def create_product_server(
     async def ask(question: str, engine_id: str = "graphmind",
                   document_ids: list[str] | None = None) -> dict[str, Any]:
         """Ask the configured server model for a grounded answer with citations."""
-        token, _ = await mcp_token()
+        token, principal = await mcp_token()
         try:
-            return await checked_result(token, reader.ask, question, engine_id=engine_id,
+            return await checked_result(token, principal, reader.ask, question, engine_id=engine_id,
                                         document_ids=document_ids or ())
         except (GraphMindError, ValueError) as exc:
             raise ToolError(getattr(exc, "code", "invalid_request")) from exc
@@ -446,9 +521,9 @@ def create_product_server(
         mime_type="application/json",
     )
     async def active_document(document_id: str) -> str:
-        token, _ = await mcp_token()
+        token, principal = await mcp_token()
         try:
-            result = await checked_result(token, reader.fetch_document, document_id)
+            result = await checked_result(token, principal, reader.fetch_document, document_id)
         except DocumentNotFoundError as exc:
             raise ResourceNotFoundError("document_not_found") from exc
         return json.dumps(result, ensure_ascii=False)
@@ -567,29 +642,33 @@ def create_product_server(
     async def browser_operation(request: Request, operation) -> Response:
         if not _valid_csrf(request, settings):
             return _error(403, "csrf_denied", "Request origin or CSRF token is invalid")
+        renewed_tokens = None
         try:
             authenticated = await _browser_principal(request, selected_authority)
             if authenticated is None:
                 return _error(401, "authentication_required", "Sign in again")
             payload = await _request_json(request, settings)
-            token, _ = authenticated
+            token, principal = authenticated
             result = await operation(payload)
-            if not await _still_authorized(token, selected_authority):
-                return _error(401, "authorization_revoked", "Account access was revoked")
+            failure, renewed_tokens = await _authorize_browser_result(
+                request, token, principal, selected_authority, settings)
+            if failure is not None:
+                return failure
             reader.validate_result(result)
-            return _security_headers(JSONResponse(result))
+            response = JSONResponse(result)
         except IdentityError:
-            return _error(503, "identity_unavailable", "Identity service is unavailable")
+            response = _error(503, "identity_unavailable", "Identity service is unavailable")
         except DocumentNotFoundError:
-            return _error(404, "document_not_found", "Document is unavailable")
+            response = _error(404, "document_not_found", "Document is unavailable")
         except QueryCapacityError:
-            return _error(503, "query_capacity_exceeded", "Reader capacity is full; retry")
+            response = _error(503, "query_capacity_exceeded", "Reader capacity is full; retry")
         except RetryableQueryError:
-            return _error(409, "retryable_query_error", "Document version changed; retry")
+            response = _error(409, "retryable_query_error", "Document version changed; retry")
         except GraphMindError as exc:
-            return _query_error(exc)
+            response = _query_error(exc)
         except ValueError:
-            return _error(400, "invalid_request", "Request was rejected")
+            response = _error(400, "invalid_request", "Request was rejected")
+        return _finish_browser_response(response, settings, renewed_tokens)
 
     @server.custom_route("/api/search", methods=["POST"])
     async def browser_search(request: Request) -> Response:
@@ -624,66 +703,73 @@ def create_product_server(
 
     @server.custom_route("/documents/{document_id}", methods=["GET"])
     async def browser_document(request: Request) -> Response:
+        renewed_tokens = None
         try:
             authenticated = await _browser_principal(request, selected_authority)
             if authenticated is None:
                 if request.cookies.get(REFRESH_COOKIE):
                     return _resume_page(request, settings)
                 return _error(401, "authentication_required", "Sign in again")
-            token, _ = authenticated
+            token, principal = authenticated
             result = await reader_work(
                 reader.fetch_document,
                 request.path_params["document_id"],
                 version_id=request.query_params.get("version_id"),
                 request=request,
             )
-            if not await _still_authorized(token, selected_authority):
-                return _error(401, "authorization_revoked", "Account access was revoked")
+            failure, renewed_tokens = await _authorize_browser_result(
+                request, token, principal, selected_authority, settings)
+            if failure is not None:
+                return failure
             reader.validate_result(result)
             body = f"{result['display_name']}\n\n{result['text']}"
-            return _security_headers(PlainTextResponse(body))
+            response = PlainTextResponse(body)
         except IdentityError:
-            return _error(503, "identity_unavailable", "Identity service is unavailable")
+            response = _error(503, "identity_unavailable", "Identity service is unavailable")
         except DocumentNotFoundError:
-            return _error(404, "document_not_found", "Document is unavailable")
+            response = _error(404, "document_not_found", "Document is unavailable")
         except QueryCapacityError:
-            return _error(503, "query_capacity_exceeded", "Reader capacity is full; retry")
+            response = _error(503, "query_capacity_exceeded", "Reader capacity is full; retry")
         except RetryableQueryError:
-            return _error(409, "retryable_query_error", "Document version changed; retry")
+            response = _error(409, "retryable_query_error", "Document version changed; retry")
         except GraphMindError as exc:
-            return _query_error(exc)
+            response = _query_error(exc)
         except ValueError:
-            return _error(400, "invalid_request", "Request was rejected")
+            response = _error(400, "invalid_request", "Request was rejected")
+        return _finish_browser_response(response, settings, renewed_tokens)
 
     async def browser_asset(request: Request, *, page_number: int | None = None) -> Response:
+        renewed_tokens = None
         try:
             authenticated = await _browser_principal(request, selected_authority)
             if authenticated is None:
                 return _error(401, "authentication_required", "Sign in again")
-            token, _ = authenticated
+            token, principal = authenticated
             result = await reader_work(reader.fetch_asset, request.path_params["document_id"],
                 version_id=request.query_params.get("version_id"), page_number=page_number, request=request)
-            if not await _still_authorized(token, selected_authority):
-                return _error(401, "authorization_revoked", "Account access was revoked")
+            failure, renewed_tokens = await _authorize_browser_result(
+                request, token, principal, selected_authority, settings)
+            if failure is not None:
+                return failure
             reader.validate_result(result)
             response = Response(result["content"], media_type=result["media_type"])
             if result["attachment"]:
                 from urllib.parse import quote
                 response.headers["Content-Disposition"] = (
                     "attachment; filename=document; filename*=UTF-8''" + quote(result["display_name"], safe=""))
-            return _security_headers(response)
         except IdentityError:
-            return _error(503, "identity_unavailable", "Identity service is unavailable")
+            response = _error(503, "identity_unavailable", "Identity service is unavailable")
         except DocumentNotFoundError:
-            return _error(404, "document_not_found", "Document is unavailable")
+            response = _error(404, "document_not_found", "Document is unavailable")
         except QueryCapacityError:
-            return _error(503, "query_capacity_exceeded", "Reader capacity is full; retry")
+            response = _error(503, "query_capacity_exceeded", "Reader capacity is full; retry")
         except RetryableQueryError:
-            return _error(409, "retryable_query_error", "Document version changed; retry")
+            response = _error(409, "retryable_query_error", "Document version changed; retry")
         except GraphMindError as exc:
-            return _query_error(exc)
+            response = _query_error(exc)
         except ValueError:
-            return _error(400, "invalid_request", "Request was rejected")
+            response = _error(400, "invalid_request", "Request was rejected")
+        return _finish_browser_response(response, settings, renewed_tokens)
 
     @server.custom_route("/documents/{document_id}/original", methods=["GET"])
     async def browser_original(request: Request) -> Response:

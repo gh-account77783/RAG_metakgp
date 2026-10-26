@@ -26,7 +26,10 @@ from graphmind.errors import (
     IdentityUnavailableError, ReaderQueryError,
 )
 from graphmind.http_client import HttpUnavailableError
-from graphmind.identity import KeycloakAdminClient, KeycloakAuthority, KeycloakIdTokenValidator, UrllibIdentityTransport, new_browser_flow
+from graphmind.identity import (
+    KeycloakAdminClient, KeycloakAuthority, KeycloakIdTokenValidator, TokenSet,
+    UrllibIdentityTransport, new_browser_flow,
+)
 from graphmind.product_server import BoundedReadiness, create_product_server
 from graphmind.providers import OllamaProvider
 from graphmind.reader import ReaderService
@@ -245,6 +248,208 @@ class BrowserHardeningTests(unittest.TestCase):
         client.cookies.set("graphmind_access", "access")
         client.cookies.set("graphmind_csrf", "test-csrf")
         return {"Origin": self.settings.public_base_url, "X-GraphMind-CSRF": "test-csrf"}
+
+    def expiring_authority(self, clock):
+        class ControlledAuthority(FakeAuthority):
+            def __init__(self):
+                super().__init__()
+                self.clock = clock
+                self.principal = replace(self.principal, expires_at=1001)
+                self.valid_tokens = {"access": self.principal}
+                self.refresh_calls = 0
+                self.refresh_rejected = False
+                self.refreshed_subject = None
+                self.fail_verify = False
+
+            async def verify_token(self, token):
+                if self.fail_verify:
+                    raise IdentityUnavailableError("injected identity outage")
+                principal = self.valid_tokens.get(token)
+                if principal is None or (principal.expires_at is not None
+                                         and principal.expires_at <= self.clock[0]):
+                    return None
+                return principal
+
+            async def refresh(self, refresh_token):
+                self.refresh_calls += 1
+                if self.refresh_rejected or refresh_token != "refresh":
+                    raise IdentityGrantRejectedError("injected refresh rejection")
+                principal = replace(self.principal, subject=self.refreshed_subject or self.principal.subject,
+                                     expires_at=self.clock[0] + 300)
+                self.valid_tokens["fresh-access"] = principal
+                return TokenSet("fresh-access", "rotated-refresh", None, 300)
+
+        return ControlledAuthority()
+
+    def test_browser_answer_renews_only_expiry_after_work_and_delivers_once(self):
+        clock = [1000]
+        authority = self.expiring_authority(clock)
+        self.authority = authority
+        calls = 0
+        original = self.application.answers.query
+
+        def answer(question, **kwargs):
+            nonlocal calls
+            calls += 1
+            clock[0] = 1002
+            return original(question, **kwargs)
+
+        self.application.answers.query = answer
+        with patch("graphmind.identity.time.time", side_effect=lambda: clock[0]), self.client() as client:
+            headers = self.credentials(client)
+            client.cookies.set("graphmind_refresh", "refresh")
+            response = client.post("/api/ask", json={"question": "question"}, headers=headers)
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["answer"], "Grounded answer")
+        self.assertEqual(calls, 1)
+        self.assertEqual(authority.refresh_calls, 1)
+        self.assertIn("graphmind_access=fresh-access", response.headers["set-cookie"])
+        self.assertIn("graphmind_refresh=rotated-refresh", response.headers["set-cookie"])
+
+    def test_browser_expiry_with_stale_source_rotates_session_but_blocks_result(self):
+        clock = [1000]
+        authority = self.expiring_authority(clock)
+        self.authority = authority
+        calls = 0
+
+        def replace_source(question, **kwargs):
+            nonlocal calls
+            calls += 1
+            clock[0] = 1002
+            self.application.metadata.document_value = replace(
+                self.application.metadata.document_value, active_version_id="version-replaced")
+            return FakeApplication().answers.query(question, **kwargs)
+
+        self.application.answers.query = replace_source
+        with patch("graphmind.identity.time.time", side_effect=lambda: clock[0]), self.client() as client:
+            headers = self.credentials(client)
+            client.cookies.set("graphmind_refresh", "refresh")
+            response = client.post("/api/ask", json={"question": "question"}, headers=headers)
+
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()["error"], "retryable_query_error")
+        self.assertNotIn("Grounded answer", response.text)
+        self.assertEqual(calls, 1)
+        self.assertEqual(authority.refresh_calls, 1)
+        self.assertIn("graphmind_access=fresh-access", response.headers["set-cookie"])
+        self.assertIn("graphmind_refresh=rotated-refresh", response.headers["set-cookie"])
+
+    def test_browser_revocation_and_identity_outage_after_work_are_not_refreshable(self):
+        for case in ("revoked", "outage"):
+            with self.subTest(case=case):
+                clock = [1000]
+                authority = self.expiring_authority(clock)
+                self.authority = authority
+
+                def finish(question, **kwargs):
+                    if case == "revoked":
+                        authority.valid_tokens.pop("access", None)
+                    else:
+                        authority.fail_verify = True
+                    return FakeApplication().answers.query(question, **kwargs)
+
+                self.application.answers.query = finish
+                with patch("graphmind.identity.time.time", side_effect=lambda: clock[0]), self.client() as client:
+                    headers = self.credentials(client)
+                    client.cookies.set("graphmind_refresh", "refresh")
+                    response = client.post("/api/ask", json={"question": "question"}, headers=headers)
+
+                self.assertEqual(response.status_code, 401 if case == "revoked" else 503)
+                self.assertEqual(response.json()["error"],
+                                 "authorization_revoked" if case == "revoked" else "identity_unavailable")
+                self.assertNotIn("Grounded answer", response.text)
+                self.assertEqual(authority.refresh_calls, 0)
+
+    def test_browser_rejected_post_work_refresh_requires_sign_in_without_replay(self):
+        clock = [1000]
+        authority = self.expiring_authority(clock)
+        authority.refresh_rejected = True
+        self.authority = authority
+        calls = 0
+        original = self.application.answers.query
+
+        def answer(question, **kwargs):
+            nonlocal calls
+            calls += 1
+            clock[0] = 1002
+            return original(question, **kwargs)
+
+        self.application.answers.query = answer
+        with patch("graphmind.identity.time.time", side_effect=lambda: clock[0]), self.client() as client:
+            headers = self.credentials(client)
+            client.cookies.set("graphmind_refresh", "refresh")
+            response = client.post("/api/ask", json={"question": "question"}, headers=headers)
+
+        self.assertEqual(response.status_code, 401, response.text)
+        self.assertEqual(response.json()["error"], "authentication_expired")
+        self.assertIn("Max-Age=0", response.headers["set-cookie"])
+        self.assertEqual(calls, 1)
+        self.assertEqual(authority.refresh_calls, 1)
+
+    def test_browser_expiry_does_not_deliver_result_for_a_different_refreshed_identity(self):
+        clock = [1000]
+        authority = self.expiring_authority(clock)
+        authority.refreshed_subject = "different-user"
+        self.authority = authority
+        calls = 0
+        original = self.application.answers.query
+
+        def answer(question, **kwargs):
+            nonlocal calls
+            calls += 1
+            clock[0] = 1002
+            return original(question, **kwargs)
+
+        self.application.answers.query = answer
+        with patch("graphmind.identity.time.time", side_effect=lambda: clock[0]), self.client() as client:
+            headers = self.credentials(client)
+            client.cookies.set("graphmind_refresh", "refresh")
+            response = client.post("/api/ask", json={"question": "question"}, headers=headers)
+
+        self.assertEqual(response.status_code, 401, response.text)
+        self.assertEqual(response.json()["error"], "authorization_revoked")
+        self.assertNotIn("Grounded answer", response.text)
+        self.assertIn("Max-Age=0", response.headers["set-cookie"])
+        self.assertEqual(calls, 1)
+        self.assertEqual(authority.refresh_calls, 1)
+
+    def test_mcp_expiry_after_work_is_typed_and_never_refreshed_or_replayed(self):
+        clock = [1000]
+        authority = self.expiring_authority(clock)
+        self.authority = authority
+        calls = 0
+        original = self.application.answers.query
+
+        def answer(question, **kwargs):
+            nonlocal calls
+            calls += 1
+            clock[0] = 1002
+            return original(question, **kwargs)
+
+        self.application.answers.query = answer
+        _, app = create_product_server(self.settings, self.application, authority=authority)
+        with patch("graphmind.identity.time.time", side_effect=lambda: clock[0]):
+            with TestClient(app, base_url=self.settings.public_base_url) as client:
+                initialized = client.post("/mcp", headers={
+                    "Accept": "application/json, text/event-stream", "Authorization": "Bearer access",
+                }, json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                    "protocolVersion": "2025-11-25", "capabilities": {},
+                    "clientInfo": {"name": "expiry-test", "version": "1"},
+                }})
+                self.assertEqual(initialized.status_code, 200, initialized.text)
+                response = client.post("/mcp", headers={
+                    "Accept": "application/json, text/event-stream", "Authorization": "Bearer access",
+                    "Mcp-Protocol-Version": "2025-11-25",
+                }, json={"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+                    "name": "ask", "arguments": {"question": "question"},
+                }})
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()["result"]["isError"])
+        self.assertIn("authentication_expired", str(response.json()["result"]["content"]))
+        self.assertEqual(calls, 1)
+        self.assertEqual(authority.refresh_calls, 0)
 
     def test_reload_and_source_navigation_resume_without_refresh_on_get(self):
         calls = []
