@@ -5,6 +5,10 @@ analysis-skills.md
 analysis.md
 cheatsheet.md
 
+# Generated Python caches.
+__pycache__/
+*.py[cod]
+
 # Licensing drafts are deferred until the final release.
 /LICENSE
 /LICENSING.md
