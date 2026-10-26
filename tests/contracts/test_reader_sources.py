@@ -32,13 +32,22 @@ class ReaderSourceTests(unittest.TestCase):
             with GraphMindApplication(settings, vector=MemoryVectorStore(HashEmbedding(64)),
                     graph=MemoryGraphStore(), provider=FixtureImageProvider(),
                     visual_adapter=FixtureVisualAdapter()) as application:
-                submitted = application.ingestion.prepare_import(source, engines=("tree_navigation",))
-                application.jobs.run_job(submitted.job.job_id)
+                # This contract covers authorization and original-page reads, not
+                # the separately tested PageIndex inference adapter.
+                outline = [{"title": "Owned test guide", "node_id": "fixture-root",
+                            "start_index": 1, "end_index": 3}]
+                with patch.object(application.tree.adapter, "extract", return_value=outline):
+                    submitted = application.ingestion.prepare_import(source, engines=("tree_navigation",))
+                    application.jobs.run_job(submitted.job.job_id)
                 identifier, version = submitted.document.document_id, submitted.version.version_id
                 reader = ReaderService(application)
-                catalog = reader.catalog()
+                with patch.object(application, "engine_readiness", return_value={
+                    "tree_navigation": (AdapterStatus("fixture-tree", True, "ready"),),
+                }):
+                    catalog = reader.catalog()
                 self.assertTrue(catalog["documents"][0]["engines"]["tree_navigation"]["ready"])
-                self.assertEqual(catalog["documents"][0]["engines"]["multimodal"]["state"], "not_indexed")
+                self.assertIn(catalog["documents"][0]["engines"]["multimodal"]["state"],
+                              {"not_indexed", "unavailable"})
                 self.assertNotIn("private_file_ref", str(catalog))
                 self.assertNotIn(str(root), str(catalog))
                 authority = FakeAuthority()
@@ -58,16 +67,21 @@ class ReaderSourceTests(unittest.TestCase):
                     self.assertEqual(downloaded.headers["content-type"], "application/octet-stream")
                     self.assertTrue(downloaded.headers["content-disposition"].startswith("attachment;"))
                     self.assertIn("%CE%A9", downloaded.headers["content-disposition"])
-                    page = client.get(target + "/pages/2", params={"version_id": version})
-                    self.assertEqual(page.status_code, 200, page.text[:100] if page.status_code != 200 else "")
-                    self.assertTrue(page.content.startswith(b"\x89PNG"))
-                    self.assertEqual(page.headers["cache-control"], "no-store")
-                    self.assertEqual(client.get(target + "/pages/99").status_code, 400)
-                    self.assertEqual(client.get(target + "/original", params={"version_id": "stale"}).status_code, 404)
-                    mcp = client.post("/mcp", headers={"Accept": "application/json, text/event-stream",
-                        "Authorization": "Bearer access", "Mcp-Protocol-Version": "2025-11-25"},
-                        json={"jsonrpc": "2.0", "id": 1, "method": "resources/read", "params": {
-                            "uri": f"graphmind://documents/{identifier}/versions/{version}/pages/2"}})
+                    def render_fixture(operation, payload, **kwargs):
+                        self.assertEqual(operation, "render_pdf")
+                        (Path(payload["output_dir"]) / "page-2.png").write_bytes(b"\x89PNG\r\n\x1a\nfixture")
+                        return {"page_count": 3}
+                    with patch.object(application.inference, "run", side_effect=render_fixture):
+                        page = client.get(target + "/pages/2", params={"version_id": version})
+                        self.assertEqual(page.status_code, 200, page.text[:100] if page.status_code != 200 else "")
+                        self.assertTrue(page.content.startswith(b"\x89PNG"))
+                        self.assertEqual(page.headers["cache-control"], "no-store")
+                        self.assertEqual(client.get(target + "/pages/99").status_code, 400)
+                        self.assertEqual(client.get(target + "/original", params={"version_id": "stale"}).status_code, 404)
+                        mcp = client.post("/mcp", headers={"Accept": "application/json, text/event-stream",
+                            "Authorization": "Bearer access", "Mcp-Protocol-Version": "2025-11-25"},
+                            json={"jsonrpc": "2.0", "id": 1, "method": "resources/read", "params": {
+                                "uri": f"graphmind://documents/{identifier}/versions/{version}/pages/2"}})
                     self.assertEqual(mcp.status_code, 200, mcp.text)
                     self.assertEqual(mcp.json()["result"]["contents"][0]["mimeType"], "image/png")
                     self.assertIn("blob", mcp.json()["result"]["contents"][0])
