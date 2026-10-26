@@ -1,0 +1,11 @@
+{
+  "host": "smtp.example.com",
+  "port": "587",
+  "from": "reader@example.com",
+  "fromDisplayName": "GraphMind",
+  "auth": "true",
+  "user": "reader@example.com",
+  "password": "REPLACE_IN_A_PRIVATE_COPY",
+  "starttls": "true",
+  "ssl": "false"
+}

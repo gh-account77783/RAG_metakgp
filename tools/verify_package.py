@@ -44,8 +44,13 @@ BUILD_FILES = (
     "deploy/keycloak/recovery-src/META-INF/services/org.keycloak.events.EventListenerProviderFactory",
 )
 
-BUILD_FILES += ("tools/identity_configuration.py",)
-
+BUILD_FILES += (
+    "tools/docker_configuration.py", "tools/identity_configuration.py", "tools/bundle_installer.py",
+    "deploy/docker/Dockerfile", "deploy/docker/compose.yaml", "deploy/docker/Caddyfile",
+    "deploy/docker/runtime.py", "deploy/docker/bootstrap_identity.py", "deploy/docker/healthcheck.py",
+    "deploy/docker/keycloak-start.sh", "deploy/docker/profile.example.json", "deploy/docker/smtp.example.json",
+    "deploy/docker/README.md", "deploy/docker/.dockerignore", "deploy/docker/.gitignore", "deploy/docker/.gitattributes",
+)
 OPERATOR_FILES = BUILD_FILES[3:]
 BUILD_FILES += (
     "tools/build_assets.py", "assets/web/graphmind.css", "assets/web/graphmind.js",

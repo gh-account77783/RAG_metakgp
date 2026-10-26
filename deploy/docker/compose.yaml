@@ -1,0 +1,294 @@
+# Linux/amd64 deployment candidate. Runtime acceptance is a separate gate.
+# All backends retain loopback listeners in the gateway's network namespace.
+x-private: &private
+  platform: linux/amd64
+  network_mode: service:gateway
+  restart: unless-stopped
+  group_add: ["${GRAPHMIND_SECRET_GID:?Run tools/docker_configuration.py first}"]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+x-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+  target: application
+  additional_contexts:
+    source: "${GRAPHMIND_SOURCE_CONTEXT:?Prepared public build inputs required}"
+    bundle: "${GRAPHMIND_BUNDLE_DIR:?Approved Linux offline bundle required}"
+  args:
+    PYTHON_IMAGE: "${GRAPHMIND_PYTHON_IMAGE:-python:3.13.17-slim-bookworm}"
+    BUNDLE_MANIFEST_SHA256: "${GRAPHMIND_BUNDLE_SHA256:?Approved bundle hash required}"
+
+x-app: &app
+  <<: *private
+  image: "${COMPOSE_PROJECT_NAME:?Project name required}-app:${GRAPHMIND_IMAGE_TAG:-local}"
+  build: *app-build
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp:mode=1777,size=512m"]
+  configs:
+    - source: reader_settings
+      target: /etc/graphmind/reader.toml
+  mem_limit: "${GRAPHMIND_APP_MEMORY:-14g}"
+  cpus: "${GRAPHMIND_APP_CPUS:-4.0}"
+  stop_grace_period: 35m
+
+services:
+  gateway:
+    # Stable network namespace; public proxy waits for private identity policy setup.
+    image: "${COMPOSE_PROJECT_NAME:?}-app:${GRAPHMIND_IMAGE_TAG:-local}"
+    build: *app-build
+    platform: linux/amd64
+    entrypoint: [/bin/sleep, infinity]
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    ports: ["${GRAPHMIND_BIND_IP:-0.0.0.0}:80:80", "${GRAPHMIND_BIND_IP:-0.0.0.0}:443:443"]
+    extra_hosts:
+      - "${GRAPHMIND_READER_HOST:?Reader hostname required}=127.0.0.1"
+      - "${GRAPHMIND_IDENTITY_HOST:?Identity hostname required}=127.0.0.1"
+    mem_limit: 32m
+
+  proxy:
+    <<: *private
+    image: "${GRAPHMIND_CADDY_IMAGE:-caddy:2.11.7-alpine}"
+    environment:
+      READER_HOST: "${GRAPHMIND_READER_HOST:?}"
+      IDENTITY_HOST: "${GRAPHMIND_IDENTITY_HOST:?}"
+      ACME_EMAIL: "${GRAPHMIND_ACME_EMAIL:?ACME contact required}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      identity-setup: {condition: service_completed_successfully}
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  postgres:
+    <<: *private
+    image: "${GRAPHMIND_POSTGRES_IMAGE:-postgres:17.11-bookworm}"
+    environment:
+      POSTGRES_DB: graphmind_keycloak
+      POSTGRES_USER: graphmind_keycloak
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    command: [postgres, -c, listen_addresses=127.0.0.1, -c, shared_buffers=128MB, -c, max_connections=30]
+    secrets: [postgres_password]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, graphmind_keycloak, -d, graphmind_keycloak]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 1g
+    stop_grace_period: 1m
+
+  keycloak:
+    <<: *private
+    image: "${COMPOSE_PROJECT_NAME:?}-keycloak:${GRAPHMIND_IMAGE_TAG:-local}"
+    build:
+      <<: *app-build
+      target: keycloak
+      args:
+        PYTHON_IMAGE: "${GRAPHMIND_PYTHON_IMAGE:-python:3.13.17-slim-bookworm}"
+        KEYCLOAK_IMAGE: "${GRAPHMIND_KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.7.5}"
+        JDK_IMAGE: "${GRAPHMIND_JDK_IMAGE:-eclipse-temurin:21.0.12.1_1-jdk-jammy}"
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://127.0.0.1:5432/graphmind_keycloak
+      KC_DB_USERNAME: graphmind_keycloak
+      KC_DB_POOL_INITIAL_SIZE: "2"
+      KC_DB_POOL_MIN_SIZE: "2"
+      KC_DB_POOL_MAX_SIZE: "10"
+      KC_HOSTNAME: "https://${GRAPHMIND_IDENTITY_HOST:?}"
+      KC_HOSTNAME_STRICT: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_HOST: 127.0.0.1
+      KC_HTTP_PORT: "8080"
+      KC_HTTP_MANAGEMENT_HOST: 127.0.0.1
+      KC_HTTP_MANAGEMENT_PORT: "9000"
+      KC_HTTP_MANAGEMENT_SCHEME: http
+      KC_PROXY_HEADERS: xforwarded
+      KC_PROXY_TRUSTED_ADDRESSES: 127.0.0.1
+      KC_CACHE: local
+      KC_BOOTSTRAP_ADMIN_USERNAME: graphmind-bootstrap
+      JAVA_OPTS_KC_HEAP: -Xms128m -Xmx768m
+    secrets:
+      - postgres_password
+      - keycloak_bootstrap_password
+      - source: realm_import
+        target: /opt/keycloak/data/import/graphmind-realm.json
+    volumes: ["keycloak_data:/opt/keycloak/data"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/9000; printf \"GET /health/ready HTTP/1.0\\r\\n\\r\\n\" >&3; read -r status <&3; [[ \"$$status\" == *\"200\"* ]]'"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    mem_limit: 1536m
+    stop_grace_period: 1m
+
+  neo4j:
+    <<: *private
+    image: "${GRAPHMIND_NEO4J_IMAGE:-neo4j:2026.04.0}"
+    # The vendor documents NEO4J_AUTH. Keep it in a private env file, never interpolation.
+    env_file: ["${GRAPHMIND_CONFIG_DIR:?}/neo4j.env"]
+    environment:
+      NEO4J_server_default__listen__address: 127.0.0.1
+      NEO4J_server_default__advertised__address: 127.0.0.1
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+      NEO4J_dbms_memory_transaction_total_max: 128m
+      NEO4J_dbms_usage__report_enabled: "false"
+    volumes: ["neo4j_data:/data", "neo4j_logs:/logs"]
+    healthcheck:
+      test: [CMD-SHELL, "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/7687'"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    mem_limit: 1536m
+    stop_grace_period: 1m
+
+  ollama:
+    <<: *private
+    image: "${GRAPHMIND_OLLAMA_IMAGE:-ollama/ollama:0.34.0}"
+    environment:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_MODELS: /models/ollama
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: "0"
+    volumes:
+      - type: bind
+        source: "${GRAPHMIND_MODELS_DIR:?}/ollama"
+        target: /models/ollama
+        read_only: true
+        bind: {create_host_path: false}
+      - ollama_home:/root/.ollama
+    healthcheck:
+      test: [CMD, ollama, list]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    mem_limit: "${GRAPHMIND_OLLAMA_MEMORY:-14g}"
+    stop_grace_period: 1m
+
+  chroma:
+    <<: *app
+    command: [chroma]
+    configs: []
+    environment:
+      HOME: /var/lib/chroma/home
+      HF_HOME: /var/lib/chroma/cache
+    volumes: ["chroma_data:/var/lib/chroma"]
+    healthcheck:
+      test: [CMD, /opt/graphmind/bin/python, -I, -B, /opt/graphmind-container/healthcheck.py, chroma]
+      interval: 10s
+      timeout: 8s
+      retries: 20
+    mem_limit: 1g
+
+  identity-setup:
+    <<: *app
+    command: [identity-setup]
+    restart: "no"
+    configs:
+      - source: user_profile
+        target: /etc/graphmind/user-profile.json
+      - source: recovery_policy
+        target: /etc/graphmind/recovery.json
+    secrets: [keycloak_bootstrap_password]
+    volumes: ["app_data:/var/lib/graphmind"]
+    depends_on:
+      keycloak: {condition: service_healthy}
+    mem_limit: 256m
+
+  reader:
+    <<: *app
+    command: [reader]
+    secrets: [reader_env]
+    volumes:
+      - app_data:/var/lib/graphmind
+      - type: bind
+        source: "${GRAPHMIND_MODELS_DIR:?}"
+        target: /models
+        read_only: true
+        bind: {create_host_path: false}
+    depends_on:
+      proxy: {condition: service_started}
+      identity-setup: {condition: service_completed_successfully}
+      neo4j: {condition: service_healthy}
+      ollama: {condition: service_healthy}
+      chroma: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, /opt/graphmind/bin/python, -I, -B, /opt/graphmind-container/healthcheck.py, reader]
+      interval: 15s
+      timeout: 8s
+      retries: 30
+      start_period: 60s
+
+  worker:
+    <<: *app
+    command: [worker]
+    secrets: [reader_env]
+    volumes: &operator-volumes
+      - app_data:/var/lib/graphmind
+      - type: bind
+        source: "${GRAPHMIND_MODELS_DIR:?}"
+        target: /models
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: "${GRAPHMIND_IMPORTS_DIR:?}"
+        target: /imports
+        read_only: true
+        bind: {create_host_path: false}
+    depends_on:
+      reader: {condition: service_healthy}
+
+  admin:
+    <<: *app
+    profiles: [tools]
+    entrypoint: [/opt/graphmind/bin/python, -I, -B, /opt/graphmind-container/runtime.py, admin]
+    command: [wizard]
+    restart: "no"
+    stdin_open: true
+    tty: true
+    secrets: [host_admin_env]
+    volumes: *operator-volumes
+    depends_on:
+      reader: {condition: service_healthy}
+
+configs:
+  reader_settings: {file: "${GRAPHMIND_CONFIG_DIR:?}/reader.toml"}
+  user_profile: {file: ../keycloak/graphmind-user-profile.json}
+  recovery_policy: {file: ../keycloak/graphmind-recovery.json}
+
+secrets:
+  reader_env: {file: "${GRAPHMIND_CONFIG_DIR:?}/reader.env"}
+  host_admin_env: {file: "${GRAPHMIND_CONFIG_DIR:?}/host-admin.env"}
+  postgres_password: {file: "${GRAPHMIND_CONFIG_DIR:?}/postgres-password"}
+  keycloak_bootstrap_password: {file: "${GRAPHMIND_CONFIG_DIR:?}/keycloak-bootstrap-password"}
+  realm_import: {file: "${GRAPHMIND_CONFIG_DIR:?}/realm-import.json"}
+
+volumes:
+  app_data: {}
+  chroma_data: {}
+  postgres_data: {}
+  keycloak_data: {}
+  neo4j_data: {}
+  neo4j_logs: {}
+  ollama_home: {}
+  caddy_data: {}
+  caddy_config: {}

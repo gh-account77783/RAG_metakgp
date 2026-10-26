@@ -1,0 +1,7 @@
+# This directory is the entire default build context; private runtime files stay out.
+*
+!Dockerfile
+!runtime.py
+!bootstrap_identity.py
+!keycloak-start.sh
+!healthcheck.py

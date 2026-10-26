@@ -1,0 +1,33 @@
+{
+    admin off
+    email {$ACME_EMAIL}
+    # Request error records can contain OAuth callback query credentials.
+    log default {
+        exclude http.log.error
+    }
+}
+
+https://{$READER_HOST} {
+    @private path /health /health/*
+    respond @private 404
+    reverse_proxy 127.0.0.1:18000
+}
+
+https://{$IDENTITY_HOST} {
+    # Permit only the shared realm/login resources at the public boundary.
+    @realm path /realms/graphmind/* /resources/* /robots.txt
+    handle @realm {
+        reverse_proxy 127.0.0.1:8080
+    }
+    # Existing host-only account CLI reaches the same issuer through loopback.
+    @host_admin {
+        remote_ip 127.0.0.1 ::1
+        path /admin/realms/graphmind /admin/realms/graphmind/*
+    }
+    handle @host_admin {
+        reverse_proxy 127.0.0.1:8080
+    }
+    handle {
+        respond 404
+    }
+}

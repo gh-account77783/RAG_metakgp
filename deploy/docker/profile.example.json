@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "project_name": "graphmind",
+  "reader_host": "rag.example.com",
+  "identity_host": "auth.example.com",
+  "acme_email": "operator@example.com",
+  "bundle_dir": "/srv/graphmind/bundle",
+  "bundle_manifest_sha256": "REPLACE_WITH_EXTERNALLY_APPROVED_MANIFEST_SHA256",
+  "models_dir": "/srv/graphmind/models",
+  "imports_dir": "/srv/graphmind/imports",
+  "answer_model": "gemma4:e4b",
+  "visual_answer_model": "qwen3-vl:2b-instruct",
+  "retrieval_profile": "legacy",
+  "smtp_file": "/srv/graphmind-private/smtp.json",
+  "google_file": null,
+  "secret_gid": 1000
+}
