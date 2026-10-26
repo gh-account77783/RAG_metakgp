@@ -44,6 +44,8 @@ BUILD_FILES = (
     "deploy/keycloak/recovery-src/META-INF/services/org.keycloak.events.EventListenerProviderFactory",
 )
 
+BUILD_FILES += ("tools/identity_configuration.py",)
+
 OPERATOR_FILES = BUILD_FILES[3:]
 BUILD_FILES += (
     "tools/build_assets.py", "assets/web/graphmind.css", "assets/web/graphmind.js",

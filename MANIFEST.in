@@ -29,3 +29,4 @@ include frontend/README.md frontend/.gitignore
 recursive-include frontend/src *.ts *.tsx *.css
 include frontend/tests/api.test.mjs
 recursive-exclude * __pycache__ *.py[cod]
+include tools/identity_configuration.py

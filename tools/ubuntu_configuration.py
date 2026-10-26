@@ -17,6 +17,7 @@ import sys
 import tomllib
 
 from tools.ubuntu_installation import complete_layout
+from tools.identity_configuration import render_realm
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -120,12 +121,7 @@ def render(profile, settings_toml: bytes):
     }
     substitutions = {**values, 'GRAPHMIND_GOOGLE_CLIENT_ID': '', 'GRAPHMIND_GOOGLE_CLIENT_SECRET': ''}
     template = (ROOT/'deploy/keycloak/graphmind-realm.template.json').read_text(encoding='utf-8')
-    realm = json.loads(re.sub(r'\$\{([A-Z0-9_]+)\}', lambda m: substitutions[m[1]], template))
-    # Only a service identity is provisioned. Human reader accounts use the
-    # existing registration/host-administration flow and require no new authority.
-    realm['users'] = [{'username': 'service-account-graphmind-admin', 'enabled': True,
-        'serviceAccountClientId': 'graphmind-admin',
-        'clientRoles': {'realm-management': ['query-users', 'view-users', 'manage-users']}}]
+    realm = render_realm(template, substitutions)
     kc = {
         'JAVA_OPTS_KC_HEAP': '-Xms128m -Xmx768m', 'KC_DB': 'postgres',
         'KC_DB_URL': 'jdbc:postgresql://127.0.0.1:'+str(ports['postgresql'])+'/graphmind_keycloak',
